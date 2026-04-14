@@ -22,6 +22,35 @@ const SPEAKERS = [
   { value: 'eugene', label: 'Евгений (мужской)' },
 ]
 
+// Готовые шаблоны для podcast_mode
+const PODCAST_EXAMPLES = [
+  {
+    id: 'dialog',
+    label: 'Диалог ведущих',
+    text: `[voice:kseniya] Всем привет! Это наш подкаст.
+[pause:0.8]
+[voice:aidar] Сегодня обсудим новости по проекту.
+[pause:1.2]
+[voice:kseniya] Поехали!`,
+  },
+  {
+    id: 'ad-break',
+    label: 'Реклама/пауза',
+    text: `[voice:eugene] Короткая пауза перед следующим блоком.
+[pause:2.0]
+[voice:xenia] Спасибо, что слушаете нас.`,
+  },
+  {
+    id: 'narration',
+    label: 'Озвучка с паузами',
+    text: `[voice:baya] Глава первая.
+[pause:1.0]
+В небольшом городе началась новая история.
+[pause:1.5]
+И никто не знал, к чему она приведет.`,
+  },
+]
+
 /**
  * Конвертирует AudioBuffer в WAV Blob
  * @param {AudioBuffer} buffer - Аудио буфер из браузера
@@ -104,10 +133,16 @@ function App() {
   const [audioUrl, setAudioUrl] = useState(null)
   // Выбранный голос
   const [speaker, setSpeaker] = useState('kseniya')
+  // Выбранный голос для вставки voice-тега в текст
+  const [templateVoice, setTemplateVoice] = useState('kseniya')
+  // Значение паузы для вставки тега [pause:...]
+  const [pauseTemplateValue, setPauseTemplateValue] = useState('1.0')
   // Флаг расстановки ударений
   const [putAccent, setPutAccent] = useState(true)
   // Флаг расстановки буквы 'ё'
   const [putYo, setPutYo] = useState(true)
+  // Режим подкаста (поддержка тегов [voice:...] и [pause:...])
+  const [podcastMode, setPodcastMode] = useState(false)
 
   // --- Состояния для режима STT (Speech-to-Text) ---
   // Загруженный аудио-файл
@@ -137,6 +172,8 @@ function App() {
 
   // Ссылка на input для загрузки файла
   const fileInputRef = useRef(null)
+  // Ссылка на textarea TTS для вставки шаблонов в позицию курсора
+  const textInputRef = useRef(null)
 
   // === Обработчики событий для режима TTS ===
 
@@ -170,6 +207,7 @@ function App() {
           speaker: speaker,             // Выбранный голос
           put_accent: putAccent,        // Флаг расстановки ударений
           put_yo: putYo,                // Флаг расстановки буквы 'ё'
+          podcast_mode: podcastMode,    // Режим подкаста с тегами [voice]/[pause]
         }),
       })
 
@@ -224,6 +262,50 @@ function App() {
       // Удаляем ссылку из DOM
       document.body.removeChild(a)
     }
+  }
+
+  // Вставить готовый шаблон podcast-режима в поле текста
+  const handleInsertPodcastExample = (exampleText) => {
+    setText(exampleText)
+    setError(null)
+  }
+
+  // Вставить фрагмент в textarea по позиции курсора (или в конец, если нет фокуса)
+  const insertIntoTextAtCursor = (insertText) => {
+    const textarea = textInputRef.current
+    if (!textarea) {
+      setText(prev => `${prev}${prev ? '\n' : ''}${insertText}`)
+      return
+    }
+
+    const start = textarea.selectionStart ?? text.length
+    const end = textarea.selectionEnd ?? text.length
+    const nextText = `${text.slice(0, start)}${insertText}${text.slice(end)}`
+    setText(nextText)
+
+    // Восстанавливаем фокус и ставим курсор после вставленного фрагмента
+    requestAnimationFrame(() => {
+      textarea.focus()
+      const pos = start + insertText.length
+      textarea.setSelectionRange(pos, pos)
+    })
+  }
+
+  // Вставить тег выбранного голоса
+  const handleInsertVoiceTag = () => {
+    insertIntoTextAtCursor(`[voice:${templateVoice}] `)
+    setError(null)
+  }
+
+  // Вставить тег паузы с введенной длительностью
+  const handleInsertPauseTag = () => {
+    const value = pauseTemplateValue.trim()
+    if (!value) {
+      setError('Введите время паузы (например: 1.5, 1.5s или 500ms)')
+      return
+    }
+    insertIntoTextAtCursor(`[pause:${value}] `)
+    setError(null)
   }
 
   // === Обработчики событий для режима STT ===
@@ -522,6 +604,7 @@ function App() {
                   placeholder="Введите текст, который хотите озвучить..."
                   // Можно менять высоту, минимум 200px
                   style={{ resize: 'vertical', minHeight: '200px' }}
+                  ref={textInputRef}
                 />
                 {/* Мелкий текст под полем — счётчик символов */}
                 <Form.Text className="text-muted">
@@ -564,9 +647,103 @@ function App() {
                       checked={putYo}
                       onChange={(e) => setPutYo(e.target.checked)}
                     />
+                    {/* Переключатель podcast_mode */}
+                    <Form.Check
+                      type="switch"
+                      id="podcast-mode"
+                      label="Режим подкаста (теги [voice:] и [pause:])"
+                      checked={podcastMode}
+                      onChange={(e) => setPodcastMode(e.target.checked)}
+                      className="mt-2"
+                    />
                   </Form.Group>
                 </Col>
               </Row>
+
+              {podcastMode && (
+                <>
+                  <Alert variant="info" className="mb-3">
+                    В режиме подкаста можно использовать теги, например:
+                    {' '}
+                    <code>[voice:aidar]</code>
+                    {' '}
+                    Текст...
+                    {' '}
+                    <code>[pause:1.5]</code>
+                  </Alert>
+
+                  <Card className="mb-3 border-info-subtle">
+                    <Card.Body>
+                      <h6 className="mb-2">Вставка тега голоса</h6>
+                      <Row className="g-2 mb-3">
+                        <Col md={8}>
+                          <Form.Select
+                            value={templateVoice}
+                            onChange={(e) => setTemplateVoice(e.target.value)}
+                          >
+                            {SPEAKERS.map((s) => (
+                              <option key={`template-${s.value}`} value={s.value}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </Form.Select>
+                        </Col>
+                        <Col md={4}>
+                          <div className="d-grid">
+                            <Button
+                              variant="outline-primary"
+                              onClick={handleInsertVoiceTag}
+                              disabled={loading}
+                            >
+                              Вставить [voice]
+                            </Button>
+                          </div>
+                        </Col>
+                      </Row>
+
+                      <h6 className="mb-2">Вставка тега паузы</h6>
+                      <Row className="g-2 mb-3">
+                        <Col md={8}>
+                          <Form.Control
+                            type="text"
+                            value={pauseTemplateValue}
+                            onChange={(e) => setPauseTemplateValue(e.target.value)}
+                            placeholder="Например: 1.5, 1.5s или 500ms"
+                          />
+                        </Col>
+                        <Col md={4}>
+                          <div className="d-grid">
+                            <Button
+                              variant="outline-primary"
+                              onClick={handleInsertPauseTag}
+                              disabled={loading}
+                            >
+                              Вставить [pause]
+                            </Button>
+                          </div>
+                        </Col>
+                      </Row>
+
+                      <h6 className="mb-2">Примеры для вставки</h6>
+                      <p className="text-muted mb-3">
+                        Нажмите кнопку, чтобы вставить шаблон в поле текста.
+                      </p>
+                      <div className="d-grid gap-2">
+                        {PODCAST_EXAMPLES.map((example) => (
+                          <Button
+                            key={example.id}
+                            variant="outline-info"
+                            onClick={() => handleInsertPodcastExample(example.text)}
+                            disabled={loading}
+                          >
+                            {example.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </>
+              )}
 
               {/* Контейнер для кнопок (grid, с зазором) */}
               <div className="d-grid gap-2">

@@ -32,6 +32,7 @@ class SynthesizeRequest(BaseModel):
     speaker: str = 'kseniya'   # Голос по умолчанию (доступны: kseniya, xenia, baya, aidar, eugene)
     put_accent: bool = True    # Расставлять ли ударения по умолчанию
     put_yo: bool = True        # Заменять ли 'е' на 'ё' где нужно по умолчанию
+    podcast_mode: bool = False # Режим подкаста (парсинг тегов [voice] и [pause])
 
 
 # POST-эндпоинт для синтеза речи — принимает JSON с текстом, возвращает MP3-файл
@@ -54,7 +55,8 @@ async def synthesize(request: SynthesizeRequest):
             text=request.text,          # Текст для озвучивания
             speaker=request.speaker,    # Выбранный голос
             put_accent=request.put_accent,  # Флаг расстановки ударений
-            put_yo=request.put_yo       # Флаг расстановки буквы 'ё'
+            put_yo=request.put_yo,       # Флаг расстановки буквы 'ё'
+            podcast_mode=request.podcast_mode  # Режим подкаста (теги)
         )
 
         # Возвращаем MP3-файл как streaming response — браузер скачивает файл
