@@ -8,3 +8,5 @@ torchaudio==2.1.1           # Torchaudio — обработка аудио в э
 numpy==1.24.4               # NumPy — работа с числовыми массивами (конвертация тензоров)
 python-multipart==0.0.6     # Обработка multipart/form-data (нужен FastAPI для загрузки файлов)
 soundfile==0.12.1           # SoundFile — чтение/запись аудиофайлов (WAV, OGG, etc.)
+openai-whisper==20231117    # OpenAI Whisper — распознавание речи (Speech-to-Text)
+librosa==0.9.2              # Librosa — ресемплинг аудио для Whisper

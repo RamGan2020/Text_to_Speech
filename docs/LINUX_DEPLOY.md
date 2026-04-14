@@ -1,14 +1,16 @@
 # Инструкция по деплою на Linux-сервер
 
 Данная инструкция описывает процесс установки и запуска приложения на сервере с ОС Linux (Ubuntu/Debian).
+Приложение включает два режима: TTS (синтез речи) и STT (распознавание речи).
 
 ## Требования
 
 - Linux (Ubuntu 20.04+ / Debian 11+)
 - Python 3.8+
 - Node.js 18+ и npm
-- Минимум 4 ГБ ОЗУ (модель Silero TTS требует ~2 ГБ)
-- Доступ к интернету (для загрузки модели при первом запуске)
+- Минимум 4 ГБ ОЗУ (Silero TTS ~2 ГБ + Whisper small ~500 МБ)
+- Доступ к интернету (для загрузки моделей при первом запуске)
+- ffmpeg (опционально, для поддержки M4A в STT)
 
 ---
 
@@ -84,7 +86,9 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> **Важно:** При первом запуске модель Silero TTS (~100 МБ) будет загружена автоматически.
+> **Важно:** При первом запуске модели будут загружены автоматически:
+> - Silero TTS v4 (~100 МБ)
+> - OpenAI Whisper small (~500 МБ) — при первом запросе распознавания
 
 ---
 
@@ -195,13 +199,23 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Проксирование API-запросов на backend
+    # Проксирование API-запросов на backend (TTS)
     location /synthesize {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 300s;  # Увеличиваем таймаут для длинных текстов
+    }
+
+    # Проксирование API-запросов на backend (STT)
+    location /transcribe {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 600s;  # Увеличиваем таймаут для распознавания
+        client_max_body_size 50M;  # Разрешаем загрузку файлов до 50 МБ
     }
 
     location /health {
@@ -340,8 +354,18 @@ ls -la ~/tts-app/backend/
 # Проверка свободного места
 df -h
 
-# ОЗУ может быть недостаточно — модель требует ~2 ГБ
+# ОЗУ может быть недостаточно — модели требуют ~2.5 ГБ в сумме
 free -h
+```
+
+### Ошибка распознавания (STT)
+
+```bash
+# Проверка, загружена ли модель Whisper
+sudo journalctl -u tts-backend.service | grep "Whisper"
+
+# Если ffmpeg нужен для M4A — проверка установки
+ffmpeg -version
 ```
 
 ### Nginx отдаёт 502 Bad Gateway

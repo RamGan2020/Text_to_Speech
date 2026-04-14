@@ -5,7 +5,9 @@ from fastapi import FastAPI, HTTPException  # Импортируем FastAPI (ф
 from fastapi.middleware.cors import CORSMiddleware  # Middleware для CORS (разрешаем запросы с фронтенда)
 from fastapi.responses import StreamingResponse  # Ответ-поток для отправки больших файлов без загрузки в память
 from pydantic import BaseModel  # Библиотека для валидации и типизации данных запросов
+from fastapi import UploadFile, File  # Импортируем для загрузки файлов через multipart/form-data
 from tts_service import get_tts_service  # Функция получения экземпляра TTS-сервиса (singleton)
+from stt_service import get_stt_service  # Функция получения экземпляра STT-сервиса (singleton)
 import io  # Модуль для работы с потоками в памяти (BytesIO)
 
 # Создаём экземпляр FastAPI-приложения с названием и версией
@@ -61,6 +63,39 @@ async def synthesize(request: SynthesizeRequest):
     except Exception as e:
         # Если произошла любая ошибка — возвращаем 500 с описанием
         raise HTTPException(status_code=500, detail=f"Ошибка синтеза: {str(e)}")
+
+
+# POST-эндпоинт для распознавания речи — принимает аудио-файл, возвращает текст
+@app.post("/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    """Endpoint для распознавания речи из аудио-файла (MP3/WAV)"""
+    # Проверяем, что файл передан
+    if not audio or not audio.filename:
+        raise HTTPException(status_code=400, detail="Необходимо загрузить аудио-файл")
+
+    # Проверяем расширение файла
+    filename_lower = audio.filename.lower()
+    if not filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a', '.flac')):
+        raise HTTPException(
+            status_code=400,
+            detail="Поддерживаются только форматы: MP3, WAV, OGG, M4A, FLAC"
+        )
+
+    try:
+        # Читаем содержимое файла в байты
+        audio_bytes = await audio.read()
+        # Получаем экземпляр STT-сервиса (singleton — модель загружается один раз)
+        stt_service = get_stt_service()
+        # Определяем формат по расширению файла
+        file_format = filename_lower.split('.')[-1]
+        # Вызываем метод распознавания — получаем текст
+        text = stt_service.transcribe(audio_bytes, file_format=file_format)
+
+        # Возвращаем JSON с распознанным текстом
+        return {"text": text, "filename": audio.filename}
+    except Exception as e:
+        # Если произошла любая ошибка — возвращаем 500 с описанием
+        raise HTTPException(status_code=500, detail=f"Ошибка распознавания: {str(e)}")
 
 
 # GET-эндпоинт для проверки работоспособности сервера
