@@ -22,3 +22,47 @@ h1 {
   color: #212529;      /* Тёмно-серый цвет заголовка (Bootstrap dark) */
   font-weight: 700;    /* Жирный шрифт (700 = bold) */
 }
+
+/* === Стили для записи с микрофона === */
+
+/* Контейнер индикатора записи */
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+}
+
+/* Пульсирующий красный круг */
+.pulse-circle {
+  width: 20px;
+  height: 20px;
+  background-color: #dc3545;  /* Bootstrap danger цвет */
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Анимация пульсации */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Таймер записи */
+.recording-time {
+  font-family: 'Courier New', monospace;  /* Моноширинный шрифт */
+  font-size: 1.25rem;                     /* Крупный размер */
+  font-weight: 700;                       /* Жирный */
+  color: #dc3545;                         /* Красный цвет */
+}

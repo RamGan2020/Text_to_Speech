@@ -22,6 +22,75 @@ const SPEAKERS = [
   { value: 'eugene', label: 'Евгений (мужской)' },
 ]
 
+/**
+ * Конвертирует AudioBuffer в WAV Blob
+ * @param {AudioBuffer} buffer - Аудио буфер из браузера
+ * @returns {Blob} WAV файл в виде Blob
+ */
+function audioBufferToWav(buffer) {
+  // Получаем данные из каналов
+  const numChannels = buffer.numberOfChannels  // Количество каналов (обычно 1 или 2)
+  const sampleRate = buffer.sampleRate         // Частота дискретизации (обычно 44100 или 48000)
+  const format = 1  // PCM (без сжатия)
+  const bitDepth = 16  // 16-bit
+
+  // Интерливинг каналов (чередование сэмплов левого/правого)
+  const interleaved = new Float32Array(buffer.length * numChannels)
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel)
+    for (let i = 0; i < buffer.length; i++) {
+      interleaved[i * numChannels + channel] = channelData[i]
+    }
+  }
+
+  // Конвертация float32 в int16
+  const int16Data = new Int16Array(interleaved.length)
+  for (let i = 0; i < interleaved.length; i++) {
+    // Масштабируем float [-1, 1] в int16 [-32768, 32767]
+    const s = Math.max(-1, Math.min(1, interleaved[i]))
+    int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+  }
+
+  // Создаём WAV файл вручную (заголовок + данные)
+  const dataLength = int16Data.length * 2  // 2 байта на сэмпл
+  const headerLength = 44  // Стандартный WAV заголовок
+  const totalLength = headerLength + dataLength
+  const arrayBuffer = new ArrayBuffer(totalLength)
+  const view = new DataView(arrayBuffer)
+
+  // Запись WAV заголовка
+  writeString(view, 0, 'RIFF')                          // ChunkID
+  view.setUint32(4, 36 + dataLength, true)              // ChunkSize
+  writeString(view, 8, 'WAVE')                          // Format
+  writeString(view, 12, 'fmt ')                         // Subchunk1ID
+  view.setUint32(16, 16, true)                          // Subchunk1Size (PCM = 16)
+  view.setUint16(20, format, true)                      // AudioFormat (PCM = 1)
+  view.setUint16(22, numChannels, true)                 // NumChannels
+  view.setUint32(24, sampleRate, true)                  // SampleRate
+  view.setUint32(28, sampleRate * numChannels * 2, true) // ByteRate
+  view.setUint16(32, numChannels * 2, true)             // BlockAlign
+  view.setUint16(34, bitDepth, true)                    // BitsPerSample
+  writeString(view, 36, 'data')                         // Subchunk2ID
+  view.setUint32(40, dataLength, true)                  // Subchunk2Size
+
+  // Запись аудио-данных
+  for (let i = 0; i < int16Data.length; i++) {
+    view.setInt16(44 + i * 2, int16Data[i], true)
+  }
+
+  // Возвращаем как Blob
+  return new Blob([arrayBuffer], { type: 'audio/wav' })
+}
+
+/**
+ * Записывает строку в DataView
+ */
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i))
+  }
+}
+
 function App() {
   // === Состояния компонента (данные, которые меняются и вызывают перерисовку) ===
 
@@ -45,6 +114,20 @@ function App() {
   const [sttFile, setSttFile] = useState(null)
   // Распознанный текст
   const [recognizedText, setRecognizedText] = useState('')
+
+  // --- Состояния для записи с микрофона ---
+  // Состояние записи: 'idle' (покой), 'requesting' (запрос доступа), 'recording' (запись)
+  const [micState, setMicState] = useState('idle')
+  // Записанный аудио-Blob (webm)
+  const [recordedBlob, setRecordedBlob] = useState(null)
+  // Таймер записи (секунды)
+  const [recordingTime, setRecordingTime] = useState(0)
+  // Ссылка на MediaRecorder
+  const mediaRecorderRef = useRef(null)
+  // Ссылка на поток микрофона
+  const streamRef = useRef(null)
+  // Ссылка на интервал таймера
+  const timerRef = useRef(null)
 
   // --- Общие состояния ---
   // Флаг загрузки (показывает спиннер)
@@ -222,12 +305,175 @@ function App() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+    // Сбрасываем запись с микрофона
+    setRecordedBlob(null)
+    setRecordingTime(0)
+    setMicState('idle')
+    // Останавливаем запись, если она идёт
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+    // Останавливаем поток микрофона
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    // Очищаем интервал таймера
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
   }
 
   // Обработчик кнопки "Копировать текст"
   const handleCopyText = () => {
     // Копируем распознанный текст в буфер обмена
     navigator.clipboard.writeText(recognizedText)
+  }
+
+  // === Обработчики записи с микрофона ===
+
+  // Начать запись с микрофона
+  const startRecording = async () => {
+    try {
+      // Сбрасываем предыдущую запись
+      setRecordedBlob(null)
+      setRecordingTime(0)
+
+      // Запрашиваем доступ к микрофону
+      setMicState('requesting')
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      // Сохраняем ссылку на поток
+      streamRef.current = stream
+
+      // Создаём MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+
+      // Массив для хранения чанков аудио
+      const chunks = []
+
+      // Обработчик получения данных
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data)
+        }
+      }
+
+      // Обработчик окончания записи
+      mediaRecorder.onstop = () => {
+        // Создаём Blob из записанных чанков
+        const webmBlob = new Blob(chunks, { type: 'audio/webm' })
+
+        // Конвертируем webm в WAV через AudioContext (без ffmpeg)
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        const reader = new FileReader()
+
+        reader.onload = async (e) => {
+          try {
+            // Декодируем webm в AudioBuffer
+            const audioBuffer = await audioContext.decodeAudioData(e.target.result)
+
+            // Конвертируем AudioBuffer в WAV Blob
+            const wavBlob = audioBufferToWav(audioBuffer)
+
+            // Сохраняем WAV Blob в состояние
+            setRecordedBlob(wavBlob)
+          } catch (err) {
+            setError('Ошибка обработки аудио: ' + err.message)
+          } finally {
+            // Возвращаем состояние в покой
+            setMicState('idle')
+            // Останавливаем поток микрофона
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(track => track.stop())
+              streamRef.current = null
+            }
+            // Очищаем интервал таймера
+            if (timerRef.current) {
+              clearInterval(timerRef.current)
+              timerRef.current = null
+            }
+            audioContext.close()
+          }
+        }
+
+        reader.onerror = () => {
+          setError('Ошибка чтения аудио')
+          setMicState('idle')
+        }
+
+        // Читаем blob как ArrayBuffer
+        reader.readAsArrayBuffer(webmBlob)
+      }
+
+      // Начинаем запись
+      mediaRecorder.start()
+      setMicState('recording')
+
+      // Запускаем таймер записи
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1)
+      }, 1000)
+    } catch (err) {
+      // Если ошибка (пользователь отклонил запрос и т.д.)
+      setError('Не удалось получить доступ к микрофону: ' + err.message)
+      setMicState('idle')
+    }
+  }
+
+  // Остановить запись
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      // Останавливаем MediaRecorder — вызовется onstop
+      mediaRecorderRef.current.stop()
+    }
+  }
+
+  // Распознать записанное аудио
+  const transcribeRecording = async () => {
+    if (!recordedBlob) {
+      setError('Нет записанного аудио')
+      return
+    }
+
+    // Включаем режим загрузки
+    setLoading(true)
+    setError(null)
+    setRecognizedText('')
+
+    try {
+      // Создаём FormData для отправки
+      const formData = new FormData()
+      // Отправляем как WAV файл
+      formData.append('audio', recordedBlob, 'recording.wav')
+
+      // Отправляем на backend
+      const response = await fetch(`${API_URL}/transcribe`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Ошибка распознавания')
+      }
+
+      const data = await response.json()
+      setRecognizedText(data.text)
+    } catch (err) {
+      setError(err.message || 'Произошла ошибка при распознавании')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Форматирование времени записи (мм:сс)
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
   // === JSX-разметка (то, что видит пользователь) ===
@@ -395,13 +641,13 @@ function App() {
                 {/* Поле загрузки файла — принимает только аудио-форматы */}
                 <Form.Control
                   type="file"
-                  accept=".mp3,.wav,.ogg,.m4a,.flac"  // Разрешённые расширения
-                  onChange={handleFileChange}  // Обработчик выбора файла
-                  ref={fileInputRef}  // Ссылка на элемент для очистки
+                  accept=".mp3,.wav,.ogg,.flac,.webm"
+                  onChange={handleFileChange}
+                  ref={fileInputRef}
                 />
                 {/* Мелкий текст под полем — подсказка о форматах */}
                 <Form.Text className="text-muted">
-                  Поддерживаются форматы: MP3, WAV, OGG, M4A, FLAC
+                  Поддерживаются форматы: MP3, WAV, OGG, FLAC, WEBM
                 </Form.Text>
               </Form.Group>
 
@@ -412,36 +658,147 @@ function App() {
                 </div>
               )}
 
-              {/* Контейнер для кнопок (grid, с зазором) */}
-              <div className="d-grid gap-2">
-                {/* Кнопка "Распознать" — основная */}
-                <Button
-                  variant="primary"
-                  onClick={handleTranscribe}
-                  disabled={loading || !sttFile}  // Отключаем, если нет файла или идёт загрузка
-                  size="lg"
-                >
-                  {loading ? (
-                    <>
-                      {/* Спиннер загрузки — крутящийся круг */}
+              {/* Разделитель */}
+              <hr />
+
+              {/* Секция записи с микрофона */}
+              <Form.Group className="mb-3">
+                <Form.Label>Запись с микрофона</Form.Label>
+
+                {/* Индикатор и кнопка записи */}
+                <div className="d-flex align-items-center gap-3 mb-3">
+                  {/* Кнопка записи */}
+                  {micState === 'idle' && !recordedBlob && (
+                    <Button
+                      variant="outline-danger"
+                      onClick={startRecording}
+                      disabled={loading}
+                      size="lg"
+                    >
+                      🎤 Начать запись
+                    </Button>
+                  )}
+
+                  {micState === 'requesting' && (
+                    <Button variant="outline-secondary" disabled size="lg">
                       <Spinner
                         as="span"
                         animation="border"
                         size="sm"
-                        role="status"
                         className="me-2"
                       />
-                      Распознавание...
-                    </>
-                  ) : (
-                    'Распознать'
+                      Запрос доступа...
+                    </Button>
                   )}
-                </Button>
-                {/* Кнопка "Очистить" — контурная, серая */}
+
+                  {micState === 'recording' && (
+                    <>
+                      {/* Пульсирующий индикатор записи */}
+                      <div className="recording-indicator">
+                        <div className="pulse-circle"></div>
+                      </div>
+                      {/* Таймер записи */}
+                      <span className="recording-time">{formatTime(recordingTime)}</span>
+                      {/* Кнопка остановки */}
+                      <Button
+                        variant="danger"
+                        onClick={stopRecording}
+                        size="lg"
+                      >
+                        ⏹ Остановить
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Записанное аудио */}
+                  {recordedBlob && micState === 'idle' && (
+                    <>
+                      <span className="badge bg-success me-2">
+                        ✓ Записано ({formatTime(recordingTime)})
+                      </span>
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => {
+                          setRecordedBlob(null)
+                          setRecordingTime(0)
+                        }}
+                        size="sm"
+                      >
+                        Удалить запись
+                      </Button>
+                    </>
+                  )}
+                </div>
+
+                {/* Аудиоплеер для прослушивания записи */}
+                {recordedBlob && (
+                  <audio
+                    controls
+                    src={URL.createObjectURL(recordedBlob)}
+                    className="w-100 mb-3"
+                  >
+                    Ваш браузер не поддерживает аудио элемент.
+                  </audio>
+                )}
+              </Form.Group>
+
+              {/* Контейнер для кнопок (grid, с зазором) */}
+              <div className="d-grid gap-2">
+                {/* Кнопка "Распознать файл" — если выбран файл */}
+                {sttFile && (
+                  <Button
+                    variant="primary"
+                    onClick={handleTranscribe}
+                    disabled={loading}
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Spinner
+                          as="span"
+                          animation="border"
+                          size="sm"
+                          role="status"
+                          className="me-2"
+                        />
+                        Распознавание...
+                      </>
+                    ) : (
+                      'Распознать файл'
+                    )}
+                  </Button>
+                )}
+
+                {/* Кнопка "Распознать запись" — если есть запись */}
+                {recordedBlob && (
+                  <Button
+                    variant="success"
+                    onClick={transcribeRecording}
+                    disabled={loading}
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Spinner
+                          as="span"
+                          animation="border"
+                          size="sm"
+                          role="status"
+                          className="me-2"
+                        />
+                        Распознавание...
+                      </>
+                    ) : (
+                      'Распознать запись'
+                    )}
+                  </Button>
+                )}
+
+                {/* Кнопка "Очистить" */}
                 <Button
                   variant="outline-secondary"
                   onClick={handleSttClear}
-                  disabled={loading}
+                  disabled={loading || micState === 'recording'}
                 >
                   Очистить
                 </Button>

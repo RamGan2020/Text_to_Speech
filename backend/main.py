@@ -1,5 +1,6 @@
-# main.py — Точка входа FastAPI сервера для TTS-приложения
+# main.py — Точка входа FastAPI сервера для приложения TTS/STT
 # Этот файл определяет HTTP-эндпоинты, модели запросов/ответов и настройку сервера
+# Сервисы: TTS (синтез речи из текста) и STT (распознавание речи из аудио)
 
 from fastapi import FastAPI, HTTPException  # Импортируем FastAPI (фреймворк) и HTTPException (для ошибок)
 from fastapi.middleware.cors import CORSMiddleware  # Middleware для CORS (разрешаем запросы с фронтенда)
@@ -11,7 +12,7 @@ from stt_service import get_stt_service  # Функция получения э�
 import io  # Модуль для работы с потоками в памяти (BytesIO)
 
 # Создаём экземпляр FastAPI-приложения с названием и версией
-app = FastAPI(title="Text-to-Speech API", version="1.0.0")
+app = FastAPI(title="Text-to-Speech / Speech-to-Text API", version="1.0.0")
 
 # Настраиваем CORS middleware — разрешаем запросы с любых источников
 # В продакшене стоит ограничить allow_origins до конкретного домена
@@ -24,7 +25,7 @@ app.add_middleware(
 )
 
 
-# Класс-модель для валидации тела POST-запроса
+# Класс-модель для валидации тела POST-запроса на синтез речи
 # Pydantic автоматически проверит типы и установит значения по умолчанию
 class SynthesizeRequest(BaseModel):
     text: str                  # Обязательное поле — текст для озвучивания
@@ -33,16 +34,20 @@ class SynthesizeRequest(BaseModel):
     put_yo: bool = True        # Заменять ли 'е' на 'ё' где нужно по умолчанию
 
 
-# POST-эндпоинт для синтеза речи — принимает JSON, возвращает MP3-файл
+# POST-эндпоинт для синтеза речи — принимает JSON с текстом, возвращает MP3-файл
 @app.post("/synthesize")
 async def synthesize(request: SynthesizeRequest):
-    """Endpoint для синтеза речи"""
+    """Endpoint для синтеза речи (Text-to-Speech).
+    
+    Принимает JSON с текстом и настройками голоса, возвращает MP3-файл.
+    Текст автоматически разбивается на чанки (до 500 символов) для обработки.
+    """
     # Проверяем, что текст не пустой (после удаления пробелов)
     if not request.text or not request.text.strip():
         raise HTTPException(status_code=400, detail="Текст не может быть пустым")
 
     try:
-        # Получаем экземпляр TTS-сервиса (singleton — модель загружается один раз)
+        # Получаем экземпляр TTS-сервиса (singleton — модель Silero загружается один раз)
         tts_service = get_tts_service()
         # Вызываем метод синтеза — передаём текст и настройки голоса
         mp3_file = tts_service.synthesize(
@@ -65,33 +70,37 @@ async def synthesize(request: SynthesizeRequest):
         raise HTTPException(status_code=500, detail=f"Ошибка синтеза: {str(e)}")
 
 
-# POST-эндпоинт для распознавания речи — принимает аудио-файл, возвращает текст
+# POST-эндпоинт для распознавания речи — принимает аудио-файл, возвращает JSON с текстом
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
-    """Endpoint для распознавания речи из аудио-файла (MP3/WAV)"""
+    """Endpoint для распознавания речи (Speech-to-Text).
+    
+    Принимает аудио-файл (MP3, WAV, OGG, FLAC, WEBM), возвращает распознанный текст.
+    Аудио загружается через multipart/form-data.
+    """
     # Проверяем, что файл передан
     if not audio or not audio.filename:
         raise HTTPException(status_code=400, detail="Необходимо загрузить аудио-файл")
 
     # Проверяем расширение файла
     filename_lower = audio.filename.lower()
-    if not filename_lower.endswith(('.mp3', '.wav', '.ogg', '.m4a', '.flac')):
+    if not filename_lower.endswith(('.mp3', '.wav', '.ogg', '.flac', '.webm')):
         raise HTTPException(
             status_code=400,
-            detail="Поддерживаются только форматы: MP3, WAV, OGG, M4A, FLAC"
+            detail="Поддерживаются только форматы: MP3, WAV, OGG, FLAC, WEBM"
         )
 
     try:
         # Читаем содержимое файла в байты
         audio_bytes = await audio.read()
-        # Получаем экземпляр STT-сервиса (singleton — модель загружается один раз)
+        # Получаем экземпляр STT-сервиса (singleton — модель Whisper загружается один раз)
         stt_service = get_stt_service()
         # Определяем формат по расширению файла
         file_format = filename_lower.split('.')[-1]
         # Вызываем метод распознавания — получаем текст
         text = stt_service.transcribe(audio_bytes, file_format=file_format)
 
-        # Возвращаем JSON с распознанным текстом
+        # Возвращаем JSON с распознанным текстом и именем файла
         return {"text": text, "filename": audio.filename}
     except Exception as e:
         # Если произошла любая ошибка — возвращаем 500 с описанием
@@ -101,7 +110,7 @@ async def transcribe(audio: UploadFile = File(...)):
 # GET-эндпоинт для проверки работоспособности сервера
 @app.get("/health")
 async def health_check():
-    """Проверка работоспособности"""
+    """Проверка работоспособности. Используется для мониторинга."""
     return {"status": "ok"}  # Возвращаем простой JSON — используется для мониторинга
 
 

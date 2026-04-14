@@ -1,7 +1,7 @@
 # Инструкция по деплою на Linux-сервер
 
 Данная инструкция описывает процесс установки и запуска приложения на сервере с ОС Linux (Ubuntu/Debian).
-Приложение включает два режима: TTS (синтез речи) и STT (распознавание речи).
+Приложение включает три режима: TTS (синтез речи), STT (распознавание файлов) и запись с микрофона.
 
 ## Требования
 
@@ -10,7 +10,7 @@
 - Node.js 18+ и npm
 - Минимум 4 ГБ ОЗУ (Silero TTS ~2 ГБ + Whisper small ~500 МБ)
 - Доступ к интернету (для загрузки моделей при первом запуске)
-- ffmpeg (опционально, для поддержки M4A в STT)
+- ffmpeg (опционально, для поддержки M4A в STT — не требуется для базовой работы)
 
 ---
 
@@ -29,7 +29,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3.10 python3.10-venv python3-pip
 
 # Установка системных библиотек для работы аудио
-sudo apt install -y libsndfile1 ffmpeg
+sudo apt install -y libsndfile1
 
 # Проверка версии
 python3 --version
@@ -87,7 +87,7 @@ pip install -r requirements.txt
 ```
 
 > **Важно:** При первом запуске модели будут загружены автоматически:
-> - Silero TTS v4 (~100 МБ)
+> - Silero TTS v4 (~100 МБ) — при первом запросе синтеза
 > - OpenAI Whisper small (~500 МБ) — при первом запросе распознавания
 
 ---
@@ -95,7 +95,7 @@ pip install -r requirements.txt
 ## Шаг 6: Настройка Frontend
 
 ```bash
-# Открытие нового термина (или tmux-сессии)
+# Открытие нового терминала (или tmux-сессии)
 # Переход в папку frontend
 cd ~/tts-app/frontend
 
@@ -134,7 +134,7 @@ sudo nano /etc/systemd/system/tts-backend.service
 
 ```ini
 [Unit]
-Description=TTS Backend Service
+Description=TTS/STT Backend Service
 After=network.target
 
 [Service]
@@ -208,7 +208,7 @@ server {
         proxy_read_timeout 300s;  # Увеличиваем таймаут для длинных текстов
     }
 
-    # Проксирование API-запросов на backend (STT)
+    # Проксирование API-запросов на backend (STT — загрузка файлов)
     location /transcribe {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
@@ -242,23 +242,10 @@ sudo systemctl restart nginx
 
 ---
 
-## Шаг 9: Настройка брандмауэра
+## Шаг 9: Настройка HTTPS для микрофона
 
-```bash
-# Разрешение HTTP-трафика
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp  # Если будет HTTPS
-
-# Включение брандмауэра
-sudo ufw enable
-
-# Проверка статуса
-sudo ufw status
-```
-
----
-
-## Шаг 10: Настройка HTTPS (опционально, через Let's Encrypt)
+> **Важно:** Запись с микрофона (MediaRecorder API) работает только через HTTPS или на localhost.
+> Для продакшена обязательно настройте HTTPS.
 
 ```bash
 # Установка Certbot
@@ -269,6 +256,22 @@ sudo certbot --nginx -d your-domain.com
 
 # Автоматическое обновление
 sudo certbot renew --dry-run
+```
+
+---
+
+## Шаг 10: Настройка брандмауэра
+
+```bash
+# Разрешение HTTP/HTTPS-трафика
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# Включение брандмауэра
+sudo ufw enable
+
+# Проверка статуса
+sudo ufw status
 ```
 
 ---
@@ -286,7 +289,15 @@ curl http://localhost:8000/health
 
 ### Проверка через браузер
 
-Откройте в браузере: `http://your-server-ip`
+Откройте в браузере: `https://your-domain.com`
+
+### Проверка записи с микрофона
+
+1. Откройте вкладку «Речь в текст»
+2. Нажмите «Начать запись»
+3. Разрешите доступ к микрофону
+4. Скажите что-нибудь и нажмите «Остановить»
+5. Нажмите «Распознать запись»
 
 ---
 
@@ -364,8 +375,18 @@ free -h
 # Проверка, загружена ли модель Whisper
 sudo journalctl -u tts-backend.service | grep "Whisper"
 
-# Если ffmpeg нужен для M4A — проверка установки
-ffmpeg -version
+# Проверка логов на ошибки
+sudo journalctl -u tts-backend.service | grep -i error
+```
+
+### Не работает запись с микрофона
+
+```bash
+# Проверьте, что сайт открыт через HTTPS (или localhost)
+# MediaRecorder API не работает через HTTP (кроме localhost)
+
+# Проверьте консоль браузера (F12) на ошибки
+# Убедитесь, что браузер поддерживает MediaRecorder API
 ```
 
 ### Nginx отдаёт 502 Bad Gateway
