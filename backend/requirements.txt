@@ -1,0 +1,10 @@
+# requirements.txt — Список Python-зависимостей для backend
+# Каждая строка — пакет с фиксированной версией для стабильной работы
+
+fastapi==0.104.1            # FastAPI — веб-фреймворк для создания API (асинхронный, быстрый)
+uvicorn[standard]==0.24.0   # Uvicorn — ASGI-сервер для запуска FastAPI ([standard] = доп. модули)
+torch==2.1.1                # PyTorch — фреймворк для работы с нейросетями (нужен для Silero TTS)
+torchaudio==2.1.1           # Torchaudio — обработка аудио в экосистеме PyTorch (сохранение MP3)
+numpy==1.24.4               # NumPy — работа с числовыми массивами (конвертация тензоров)
+python-multipart==0.0.6     # Обработка multipart/form-data (нужен FastAPI для загрузки файлов)
+soundfile==0.12.1           # SoundFile — чтение/запись аудиофайлов (WAV, OGG, etc.)

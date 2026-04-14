@@ -1,0 +1,54 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Виртуальное окружение
+venv/
+ENV/
+env/
+.venv/
+
+# === Node.js ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Сборка Vite
+frontend/dist/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Временные файлы ===
+*.log
+*.tmp
+*.bak
+*.cache
+temp_output.mp3
+temp_output.wav
+
+# === Environment ===
+.env
+.env.local
+.env.production
+
+# === Тестовые файлы ===
+test_*.py
+test_result.txt
