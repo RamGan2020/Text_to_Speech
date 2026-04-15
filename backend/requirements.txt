@@ -10,3 +10,4 @@ python-multipart==0.0.6     # Обработка multipart/form-data (нужен
 soundfile==0.12.1           # SoundFile — чтение/запись аудиофайлов (WAV, OGG, etc.)
 openai-whisper==20231117    # OpenAI Whisper — распознавание речи (Speech-to-Text)
 librosa==0.9.2              # Librosa — ресемплинг аудио для Whisper
+openai>=1.0.0               # OpenAI SDK — для работы с DeepSeek API (совместимый интерфейс)

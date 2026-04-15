@@ -3,7 +3,8 @@
     "allow": [
       "Bash(mkdir *)",
       "Bash(pip install *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(npm run *)"
     ]
   },
   "$version": 3

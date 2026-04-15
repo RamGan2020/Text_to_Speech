@@ -9,7 +9,9 @@ from pydantic import BaseModel  # Библиотека для валидации
 from fastapi import UploadFile, File  # Импортируем для загрузки файлов через multipart/form-data
 from tts_service import get_tts_service  # Функция получения экземпляра TTS-сервиса (singleton)
 from stt_service import get_stt_service  # Функция получения экземпляра STT-сервиса (singleton)
+from deepseek_service import get_deepseek_service  # Функция получения экземпляра DeepSeek-сервиса
 import io  # Модуль для работы с потоками в памяти (BytesIO)
+from typing import Optional  # Тип Optional для аннотаций
 
 # Создаём экземпляр FastAPI-приложения с названием и версией
 app = FastAPI(title="Text-to-Speech / Speech-to-Text API", version="1.0.0")
@@ -33,6 +35,29 @@ class SynthesizeRequest(BaseModel):
     put_accent: bool = True    # Расставлять ли ударения по умолчанию
     put_yo: bool = True        # Заменять ли 'е' на 'ё' где нужно по умолчанию
     podcast_mode: bool = False # Режим подкаста (парсинг тегов [voice] и [pause])
+
+
+# Класс-модель для валидации тела POST-запроса к DeepSeek
+class DeepSeekRequest(BaseModel):
+    question: str              # Обязательное поле — текст вопроса
+    api_key: Optional[str] = None  # API-ключ DeepSeek (опционально, можно использовать из окружения)
+    system_prompt: Optional[str] = None  # Системная инструкция (опционально)
+    model: str = 'deepseek-chat'  # Модель DeepSeek
+    max_tokens: int = 2048     # Максимальное количество токенов
+    temperature: float = 0.7   # Температура генерации
+
+
+# Класс-модель для комбинированного запроса "вопрос → ответ → озвучка"
+class AskAndSynthesizeRequest(BaseModel):
+    question: str              # Текст вопроса
+    api_key: Optional[str] = None  # API-ключ DeepSeek
+    system_prompt: Optional[str] = None  # Системная инструкция
+    speaker: str = 'kseniya'   # Голос для озвучки
+    put_accent: bool = True    # Расстановка ударений
+    put_yo: bool = True        # Расстановка буквы 'ё'
+    model: str = 'deepseek-chat'  # Модель DeepSeek
+    max_tokens: int = 2048     # Максимальное количество токенов
+    temperature: float = 0.7   # Температура генерации
 
 
 # POST-эндпоинт для синтеза речи — принимает JSON с текстом, возвращает MP3-файл
@@ -114,6 +139,90 @@ async def transcribe(audio: UploadFile = File(...)):
 async def health_check():
     """Проверка работоспособности. Используется для мониторинга."""
     return {"status": "ok"}  # Возвращаем простой JSON — используется для мониторинга
+
+
+# POST-эндпоинт для вопроса к DeepSeek — принимает вопрос, возвращает ответ
+@app.post("/ask_deepseek")
+async def ask_deepseek(request: DeepSeekRequest):
+    """Endpoint для получения ответа от DeepSeek.
+
+    Принимает JSON с вопросом и настройками, возвращает текст ответа.
+    """
+    # Проверяем, что вопрос не пустой
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Вопрос не может быть пустым")
+
+    try:
+        # Получаем экземпляр DeepSeek-сервиса (передаём ключ, если указан)
+        deepseek_service = get_deepseek_service(api_key=request.api_key)
+
+        # Отправляем запрос в DeepSeek
+        answer = deepseek_service.ask(
+            question=request.question,
+            system_prompt=request.system_prompt,
+            model=request.model,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        )
+
+        # Возвращаем JSON с ответом
+        return {"answer": answer, "model": request.model}
+    except ValueError as e:
+        # Ошибка валидации (пустой вопрос, нет ключа)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Если произошла любая ошибка — возвращаем 500 с описанием
+        raise HTTPException(status_code=500, detail=f"Ошибка запроса к DeepSeek: {str(e)}")
+
+
+# POST-эндпоинт "вопрос → ответ → озвучка" — комбинированный
+@app.post("/ask_and_synthesize")
+async def ask_and_synthesize(request: AskAndSynthesizeRequest):
+    """Комбинированный endpoint: вопрос к DeepSeek → синтез ответа в речь.
+
+    Принимает JSON с вопросом, отправляет в DeepSeek, полученный ответ озвучивает.
+    Возвращает MP3-файл и текст ответа.
+    """
+    # Проверяем, что вопрос не пустой
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Вопрос не может быть пустым")
+
+    try:
+        # Шаг 1: Получаем ответ от DeepSeek
+        deepseek_service = get_deepseek_service(api_key=request.api_key)
+        answer = deepseek_service.ask(
+            question=request.question,
+            system_prompt=request.system_prompt,
+            model=request.model,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        )
+
+        # Шаг 2: Синтезируем речь из ответа
+        tts_service = get_tts_service()
+        mp3_file = tts_service.synthesize(
+            text=answer,                # Текст ответа от DeepSeek
+            speaker=request.speaker,    # Выбранный голос
+            put_accent=request.put_accent,  # Флаг расстановки ударений
+            put_yo=request.put_yo,      # Флаг расстановки буквы 'ё'
+            podcast_mode=False,         # Комбинированный режим не использует теги подкаста
+        )
+
+        # Возвращаем MP3-файл как streaming response + текст ответа в заголовке
+        return StreamingResponse(
+            io.BytesIO(mp3_file.getvalue()),  # Оборачиваем байты в поток
+            media_type="audio/mpeg",           # MIME-тип для MP3
+            headers={
+                "Content-Disposition": "attachment; filename=speech.mp3",  # Имя файла
+                "X-DeepSeek-Answer": answer[:1000],  # Первые 1000 символов ответа (лимит заголовков)
+            }
+        )
+    except ValueError as e:
+        # Ошибка валидации
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Если произошла любая ошибка — возвращаем 500 с описанием
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
 
 # Точка входа для запуска сервера через python main.py

@@ -22,6 +22,12 @@ const SPEAKERS = [
   { value: 'eugene', label: 'Евгений (мужской)' },
 ]
 
+// Модели DeepSeek
+const DEEPSEEK_MODELS = [
+  { value: 'deepseek-chat', label: 'deepseek-chat (быстрая)' },
+  { value: 'deepseek-reasoner', label: 'deepseek-reasoner (рассуждения)' },
+]
+
 // Готовые шаблоны для podcast_mode
 const PODCAST_EXAMPLES = [
   {
@@ -48,6 +54,27 @@ const PODCAST_EXAMPLES = [
 В небольшом городе началась новая история.
 [pause:1.5]
 И никто не знал, к чему она приведет.`,
+  },
+]
+
+// Предустановленные системные промпты для DeepSeek
+const DEEPSEEK_SYSTEM_PROMPTS = [
+  { value: '', label: '— Без системного промпта —' },
+  {
+    value: 'Ты — полезный ассистент. Отвечай на вопросы кратко, по делу и на русском языке.',
+    label: 'Полезный ассистент (по умолчанию)',
+  },
+  {
+    value: 'Ты — эксперт по программированию. Давай подробные, структурированные ответы с примерами кода.',
+    label: 'Эксперт по программированию',
+  },
+  {
+    value: 'Ты — преподаватель. Объясняй сложные понятия простым языком, с примерами из жизни.',
+    label: 'Преподаватель',
+  },
+  {
+    value: 'Ты — копирайтер. Пиши тексты в маркетинговом стиле, убедительно и энергично.',
+    label: 'Копирайтер',
   },
 ]
 
@@ -149,6 +176,22 @@ function App() {
   const [sttFile, setSttFile] = useState(null)
   // Распознанный текст
   const [recognizedText, setRecognizedText] = useState('')
+
+  // --- Состояния для режима DeepSeek ---
+  // API-ключ DeepSeek
+  const [deepseekApiKey, setDeepseekApiKey] = useState('')
+  // Текст вопроса к DeepSeek
+  const [deepseekQuestion, setDeepseekQuestion] = useState('')
+  // Системный промпт (выбранный из списка или свой)
+  const [deepseekSystemPrompt, setDeepseekSystemPrompt] = useState('')
+  // Ответ от DeepSeek
+  const [deepseekAnswer, setDeepseekAnswer] = useState('')
+  // Флаг загрузки ответа
+  const [deepseekLoading, setDeepseekLoading] = useState(false)
+  // Ошибка DeepSeek
+  const [deepseekError, setDeepseekError] = useState(null)
+  // Модель DeepSeek
+  const [deepseekModel, setDeepseekModel] = useState('deepseek-chat')
 
   // --- Состояния для записи с микрофона ---
   // Состояние записи: 'idle' (покой), 'requesting' (запрос доступа), 'recording' (запись)
@@ -309,6 +352,103 @@ function App() {
   }
 
   // === Обработчики событий для режима STT ===
+
+  // === Обработчики для DeepSeek ===
+
+  // Задать вопрос DeepSeek
+  const handleAskDeepseek = async () => {
+    if (!deepseekQuestion.trim()) {
+      setDeepseekError('Введите вопрос')
+      return
+    }
+
+    setDeepseekLoading(true)
+    setDeepseekError(null)
+    setDeepseekAnswer('')
+
+    try {
+      const response = await fetch(`${API_URL}/ask_deepseek`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: deepseekQuestion,
+          api_key: deepseekApiKey || undefined,
+          system_prompt: deepseekSystemPrompt || undefined,
+          model: deepseekModel,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Ошибка запроса к DeepSeek')
+      }
+
+      const data = await response.json()
+      setDeepseekAnswer(data.answer)
+    } catch (err) {
+      setDeepseekError(err.message || 'Произошла ошибка при запросе к DeepSeek')
+    } finally {
+      setDeepseekLoading(false)
+    }
+  }
+
+  // Озвучить ответ DeepSeek
+  const handleSynthesizeDeepseekAnswer = async () => {
+    if (!deepseekAnswer) {
+      setDeepseekError('Нет ответа для озвучивания')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setAudioUrl(null)
+
+    try {
+      const response = await fetch(`${API_URL}/synthesize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: deepseekAnswer,
+          speaker: speaker,
+          put_accent: putAccent,
+          put_yo: putYo,
+          podcast_mode: false,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Ошибка синтеза')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      setAudioUrl(url)
+
+      // Переключаемся на вкладку TTS для прослушивания
+      setActiveTab('tts')
+    } catch (err) {
+      setError(err.message || 'Произошла ошибка при синтезе')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Очистить DeepSeek
+  const handleDeepseekClear = () => {
+    setDeepseekQuestion('')
+    setDeepseekAnswer('')
+    setDeepseekError(null)
+  }
+
+  // Копировать ответ DeepSeek
+  const handleCopyDeepseekAnswer = () => {
+    navigator.clipboard.writeText(deepseekAnswer)
+  }
 
   // Обработчик выбора файла для распознавания
   const handleFileChange = (e) => {
@@ -576,7 +716,8 @@ function App() {
         activeKey={activeTab}  // Активная вкладка (из состояния)
         onSelect={(k) => {  // Обработчик переключения вкладки
           setActiveTab(k)  // Обновляем состояние
-          setError(null)   // Сбрасываем ошибку при переключении
+          setError(null)   // Сбрасываем ошибку TTS/STT при переключении
+          setDeepseekError(null)  // Сбрасываем ошибку DeepSeek
         }}
         className="mb-3"  // Отступ снизу
         variant="pills"  // Стиль вкладок — "таблетки"
@@ -1009,12 +1150,147 @@ function App() {
             </Card>
           )}
         </Tab>
+
+        {/* Вкладка DeepSeek — вопрос к AI и озвучка ответа */}
+        <Tab eventKey="deepseek" title="DeepSeek AI">
+          <Card className="shadow-sm">
+            <Card.Body>
+              {/* API-ключ */}
+              <Form.Group className="mb-3">
+                <Form.Label>API-ключ DeepSeek</Form.Label>
+                <Form.Control
+                  type="password"
+                  value={deepseekApiKey}
+                  onChange={(e) => setDeepseekApiKey(e.target.value)}
+                  placeholder="sk-..."
+                />
+                <Form.Text className="text-muted">
+                  Ключ не сохраняется. Получите на{' '}
+                  <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer">
+                    platform.deepseek.com
+                  </a>
+                </Form.Text>
+              </Form.Group>
+
+              {/* Модель */}
+              <Row className="mb-3">
+                <Col md={6}>
+                  <Form.Group>
+                    <Form.Label>Модель</Form.Label>
+                    <Form.Select value={deepseekModel} onChange={(e) => setDeepseekModel(e.target.value)}>
+                      {DEEPSEEK_MODELS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group>
+                    <Form.Label>Системный промпт</Form.Label>
+                    <Form.Select value={deepseekSystemPrompt} onChange={(e) => setDeepseekSystemPrompt(e.target.value)}>
+                      {DEEPSEEK_SYSTEM_PROMPTS.map((p) => (
+                        <option key={`prompt-${p.value}`} value={p.value}>{p.label}</option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              {/* Вопрос */}
+              <Form.Group className="mb-3">
+                <Form.Label>Вопрос</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={5}
+                  value={deepseekQuestion}
+                  onChange={(e) => setDeepseekQuestion(e.target.value)}
+                  placeholder="Задайте вопрос..."
+                  style={{ resize: 'vertical', minHeight: '120px' }}
+                />
+              </Form.Group>
+
+              {/* Кнопки */}
+              <div className="d-grid gap-2">
+                <Button
+                  variant="primary"
+                  onClick={handleAskDeepseek}
+                  disabled={deepseekLoading}
+                  size="lg"
+                >
+                  {deepseekLoading ? (
+                    <>
+                      <Spinner
+                        as="span"
+                        animation="border"
+                        size="sm"
+                        role="status"
+                        className="me-2"
+                      />
+                      Запрос...
+                    </>
+                  ) : (
+                    'Задать вопрос'
+                  )}
+                </Button>
+                <Button
+                  variant="outline-secondary"
+                  onClick={handleDeepseekClear}
+                  disabled={deepseekLoading}
+                >
+                  Очистить
+                </Button>
+              </div>
+            </Card.Body>
+          </Card>
+
+          {/* Ответ DeepSeek */}
+          {deepseekAnswer && (
+            <Card className="shadow-sm mt-3">
+              <Card.Body>
+                <h5 className="card-title">Ответ DeepSeek</h5>
+                <Form.Control
+                  as="textarea"
+                  rows={10}
+                  value={deepseekAnswer}
+                  readOnly
+                  style={{ resize: 'vertical', minHeight: '200px' }}
+                  className="mb-3"
+                />
+                <div className="d-grid gap-2">
+                  <Button variant="info" onClick={handleCopyDeepseekAnswer}>
+                    Копировать ответ
+                  </Button>
+                  <Button variant="success" onClick={handleSynthesizeDeepseekAnswer} disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Spinner
+                          as="span"
+                          animation="border"
+                          size="sm"
+                          className="me-2"
+                        />
+                        Синтез...
+                      </>
+                    ) : (
+                      'Озвучить ответ'
+                    )}
+                  </Button>
+                </div>
+              </Card.Body>
+            </Card>
+          )}
+        </Tab>
       </Tabs>
 
-      {/* Блок ошибки — показывается только если есть error */}
+      {/* Блоки ошибок — показываются только если есть error или deepseekError */}
       {error && (
         <Alert variant="danger" className="mt-3">
           {error}
+        </Alert>
+      )}
+      {deepseekError && (
+        <Alert variant="danger" className="mt-3">
+          {deepseekError}
         </Alert>
       )}
     </Container>
