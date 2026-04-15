@@ -1,8 +1,8 @@
 // App.jsx — Главный компонент приложения Text-to-Speech / Speech-to-Text
 // Содержит два режима: TTS (текст → аудио) и STT (аудио → текст)
 
-import { useState, useRef } from 'react'  // Импортируем хуки useState и useRef
-import { Container, Form, Button, Alert, Spinner, Row, Col, Tabs, Tab, Card } from 'react-bootstrap'  // Импортируем компоненты Bootstrap
+import { useState, useRef, useEffect } from 'react'
+import { Container, Form, Button, Alert, Spinner, Row, Col, Tabs, Tab, Card } from 'react-bootstrap'
 import './App.css'  // Импортируем пользовательские стили
 
 // URL backend-сервера для API-запросов
@@ -148,9 +148,15 @@ function writeString(view, offset, str) {
 }
 
 function App() {
-  // === Состояния компонента (данные, которые меняются и вызывают перерисовку) ===
+  const [uiMode] = useState(() => {
+    return window.innerWidth < 768 ? 'mobile' : 'desktop';
+  });
 
-  // Активная вкладка: 'tts' (текст→аудио) или 'stt' (аудио→текст)
+  useEffect(() => {
+    document.body.classList.remove('desktop-ui', 'mobile-ui');
+    document.body.classList.add(`${uiMode}-ui`);
+  }, [uiMode]);
+
   const [activeTab, setActiveTab] = useState('tts')
 
   // --- Состояния для режима TTS (Text-to-Speech) ---
@@ -703,11 +709,8 @@ function App() {
   return (
     // Контейнер Bootstrap с отступами сверху/снизу
     <Container className="py-5">
-      {/* Центрированный заголовок с отступом снизу */}
       <div className="text-center mb-4">
-        {/* Главный заголовок страницы */}
         <h1>Text-to-Speech / Speech-to-Text</h1>
-        {/* Подсказка под заголовком */}
         <p className="text-muted">Синтез речи из текста или распознавание речи из аудио</p>
       </div>
 
@@ -753,25 +756,19 @@ function App() {
                 </Form.Text>
               </Form.Group>
 
-              {/* Строка Bootstrap с настройками (отступ снизу) */}
               <Row className="mb-3">
-                {/* Колонка шириной 6 из 12 (половина) — выбор голоса */}
-                <Col md={6}>
+                <Col xs={12} md={6}>
                   <Form.Group>
-                    {/* Метка выпадающего списка */}
                     <Form.Label>Голос</Form.Label>
                     <Form.Select value={speaker} onChange={(e) => setSpeaker(e.target.value)}>
-                      {/* Проходим по всем голосам, создаём <option> */}
                       {SPEAKERS.map((s) => (
                         <option key={s.value} value={s.value}>{s.label}</option>
                       ))}
                     </Form.Select>
                   </Form.Group>
                 </Col>
-                {/* Колонка шириной 6 из 12 (вторая половина) — переключатели */}
-                <Col md={6}>
-                  <Form.Group className="d-flex flex-column justify-content-center h-100">
-                    {/* Переключатель расстановки ударений */}
+                <Col xs={12} md={6}>
+                  <Form.Group className={uiMode === 'desktop' ? 'd-flex flex-column justify-content-center h-100' : ''}>
                     <Form.Check
                       type="switch"
                       id="put-accent"
@@ -780,7 +777,6 @@ function App() {
                       onChange={(e) => setPutAccent(e.target.checked)}
                       className="mb-2"
                     />
-                    {/* Переключатель расстановки буквы Ё */}
                     <Form.Check
                       type="switch"
                       id="put-yo"
@@ -788,11 +784,10 @@ function App() {
                       checked={putYo}
                       onChange={(e) => setPutYo(e.target.checked)}
                     />
-                    {/* Переключатель podcast_mode */}
                     <Form.Check
                       type="switch"
                       id="podcast-mode"
-                      label="Режим подкаста (теги [voice:] и [pause:])"
+                      label="Режим подкаста"
                       checked={podcastMode}
                       onChange={(e) => setPodcastMode(e.target.checked)}
                       className="mt-2"
@@ -817,7 +812,7 @@ function App() {
                     <Card.Body>
                       <h6 className="mb-2">Вставка тега голоса</h6>
                       <Row className="g-2 mb-3">
-                        <Col md={8}>
+                        <Col xs={12} sm={8}>
                           <Form.Select
                             value={templateVoice}
                             onChange={(e) => setTemplateVoice(e.target.value)}
@@ -829,14 +824,15 @@ function App() {
                             ))}
                           </Form.Select>
                         </Col>
-                        <Col md={4}>
+                        <Col xs={12} sm={4}>
                           <div className="d-grid">
                             <Button
                               variant="outline-primary"
                               onClick={handleInsertVoiceTag}
                               disabled={loading}
+                              size="sm"
                             >
-                              Вставить [voice]
+                              [voice]
                             </Button>
                           </div>
                         </Col>
@@ -844,31 +840,30 @@ function App() {
 
                       <h6 className="mb-2">Вставка тега паузы</h6>
                       <Row className="g-2 mb-3">
-                        <Col md={8}>
+                        <Col xs={7} sm={8}>
                           <Form.Control
                             type="text"
                             value={pauseTemplateValue}
                             onChange={(e) => setPauseTemplateValue(e.target.value)}
-                            placeholder="Например: 1.5, 1.5s или 500ms"
+                            placeholder="1.5, 1.5s, 500ms"
+                            size="sm"
                           />
                         </Col>
-                        <Col md={4}>
+                        <Col xs={5} sm={4}>
                           <div className="d-grid">
                             <Button
                               variant="outline-primary"
                               onClick={handleInsertPauseTag}
                               disabled={loading}
+                              size="sm"
                             >
-                              Вставить [pause]
+                              [pause]
                             </Button>
                           </div>
                         </Col>
                       </Row>
 
-                      <h6 className="mb-2">Примеры для вставки</h6>
-                      <p className="text-muted mb-3">
-                        Нажмите кнопку, чтобы вставить шаблон в поле текста.
-                      </p>
+                      <h6 className="mb-2">Примеры</h6>
                       <div className="d-grid gap-2">
                         {PODCAST_EXAMPLES.map((example) => (
                           <Button
@@ -876,6 +871,7 @@ function App() {
                             variant="outline-info"
                             onClick={() => handleInsertPodcastExample(example.text)}
                             disabled={loading}
+                            size="sm"
                           >
                             {example.label}
                           </Button>
@@ -983,56 +979,50 @@ function App() {
               <Form.Group className="mb-3">
                 <Form.Label>Запись с микрофона</Form.Label>
 
-                {/* Индикатор и кнопка записи */}
-                <div className="d-flex align-items-center gap-3 mb-3">
-                  {/* Кнопка записи */}
+                <div className={`d-flex align-items-center gap-3 mb-3 ${uiMode === 'mobile' ? 'flex-wrap' : ''}`}>
                   {micState === 'idle' && !recordedBlob && (
                     <Button
                       variant="outline-danger"
                       onClick={startRecording}
                       disabled={loading}
-                      size="lg"
+                      size={uiMode === 'mobile' ? 'md' : 'lg'}
                     >
-                      🎤 Начать запись
+                      {uiMode === 'mobile' ? '🎤 Запись' : '🎤 Начать запись'}
                     </Button>
                   )}
 
                   {micState === 'requesting' && (
-                    <Button variant="outline-secondary" disabled size="lg">
+                    <Button variant="outline-secondary" disabled size="md">
                       <Spinner
                         as="span"
                         animation="border"
                         size="sm"
                         className="me-2"
                       />
-                      Запрос доступа...
+                      Доступ...
                     </Button>
                   )}
 
                   {micState === 'recording' && (
                     <>
-                      {/* Пульсирующий индикатор записи */}
                       <div className="recording-indicator">
                         <div className="pulse-circle"></div>
                       </div>
-                      {/* Таймер записи */}
                       <span className="recording-time">{formatTime(recordingTime)}</span>
-                      {/* Кнопка остановки */}
                       <Button
                         variant="danger"
                         onClick={stopRecording}
-                        size="lg"
+                        size={uiMode === 'mobile' ? 'md' : 'lg'}
                       >
-                        ⏹ Остановить
+                        {uiMode === 'mobile' ? '⏹' : '⏹ Остановить'}
                       </Button>
                     </>
                   )}
 
-                  {/* Записанное аудио */}
                   {recordedBlob && micState === 'idle' && (
                     <>
-                      <span className="badge bg-success me-2">
-                        ✓ Записано ({formatTime(recordingTime)})
+                      <span className="badge bg-success">
+                        ✓ {formatTime(recordingTime)}
                       </span>
                       <Button
                         variant="outline-secondary"
@@ -1042,7 +1032,7 @@ function App() {
                         }}
                         size="sm"
                       >
-                        Удалить запись
+                        ✕
                       </Button>
                     </>
                   )}
@@ -1172,9 +1162,8 @@ function App() {
                 </Form.Text>
               </Form.Group>
 
-              {/* Модель */}
               <Row className="mb-3">
-                <Col md={6}>
+                <Col xs={12} md={6}>
                   <Form.Group>
                     <Form.Label>Модель</Form.Label>
                     <Form.Select value={deepseekModel} onChange={(e) => setDeepseekModel(e.target.value)}>
@@ -1184,7 +1173,7 @@ function App() {
                     </Form.Select>
                   </Form.Group>
                 </Col>
-                <Col md={6}>
+                <Col xs={12} md={6}>
                   <Form.Group>
                     <Form.Label>Системный промпт</Form.Label>
                     <Form.Select value={deepseekSystemPrompt} onChange={(e) => setDeepseekSystemPrompt(e.target.value)}>
@@ -1196,20 +1185,18 @@ function App() {
                 </Col>
               </Row>
 
-              {/* Вопрос */}
               <Form.Group className="mb-3">
                 <Form.Label>Вопрос</Form.Label>
                 <Form.Control
                   as="textarea"
-                  rows={5}
+                  rows={uiMode === 'mobile' ? 4 : 5}
                   value={deepseekQuestion}
                   onChange={(e) => setDeepseekQuestion(e.target.value)}
                   placeholder="Задайте вопрос..."
-                  style={{ resize: 'vertical', minHeight: '120px' }}
+                  style={{ resize: 'vertical', minHeight: uiMode === 'mobile' ? '100px' : '120px' }}
                 />
               </Form.Group>
 
-              {/* Кнопки */}
               <div className="d-grid gap-2">
                 <Button
                   variant="primary"
@@ -1243,22 +1230,21 @@ function App() {
             </Card.Body>
           </Card>
 
-          {/* Ответ DeepSeek */}
           {deepseekAnswer && (
             <Card className="shadow-sm mt-3">
               <Card.Body>
                 <h5 className="card-title">Ответ DeepSeek</h5>
                 <Form.Control
                   as="textarea"
-                  rows={10}
+                  rows={uiMode === 'mobile' ? 6 : 10}
                   value={deepseekAnswer}
                   readOnly
-                  style={{ resize: 'vertical', minHeight: '200px' }}
+                  style={{ resize: 'vertical', minHeight: uiMode === 'mobile' ? '150px' : '200px' }}
                   className="mb-3"
                 />
                 <div className="d-grid gap-2">
                   <Button variant="info" onClick={handleCopyDeepseekAnswer}>
-                    Копировать ответ
+                    Копировать
                   </Button>
                   <Button variant="success" onClick={handleSynthesizeDeepseekAnswer} disabled={loading}>
                     {loading ? (

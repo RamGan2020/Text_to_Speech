@@ -66,3 +66,103 @@ h1 {
   font-weight: 700;                       /* Жирный */
   color: #dc3545;                         /* Красный цвет */
 }
+
+/* === Мобильная версия === */
+@media (max-width: 767.98px) {
+  body.mobile-ui {
+    background-color: #f8f9fa;
+  }
+
+  body.mobile-ui .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  body.mobile-ui h1 {
+    font-size: 1.5rem;
+  }
+
+  body.mobile-ui .text-muted {
+    font-size: 0.85rem;
+  }
+
+  body.mobile-ui .card-body {
+    padding: 1rem;
+  }
+
+  body.mobile-ui .nav-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  body.mobile-ui .nav-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  body.mobile-ui .nav-pills .nav-link {
+    white-space: nowrap;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  body.mobile-ui textarea,
+  body.mobile-ui .form-control[as="textarea"] {
+    min-height: 120px !important;
+    font-size: 16px;
+  }
+
+  body.mobile-ui .btn-lg {
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+  }
+
+  body.mobile-ui .recording-indicator {
+    width: 36px;
+    height: 36px;
+  }
+
+  body.mobile-ui .pulse-circle {
+    width: 16px;
+    height: 16px;
+  }
+
+  body.mobile-ui .recording-time {
+    font-size: 1rem;
+  }
+
+  body.mobile-ui .col-md-6,
+  body.mobile-ui .col-md-8,
+  body.mobile-ui .col-md-4 {
+    flex: 0 0 100%;
+    max-width: 100%;
+    margin-bottom: 0.5rem;
+  }
+
+  body.mobile-ui .col-md-6:last-child,
+  body.mobile-ui .col-md-8:last-child,
+  body.mobile-ui .col-md-4:last-child {
+    margin-bottom: 0;
+  }
+
+  body.mobile-ui .d-flex.align-items-center.gap-3 {
+    flex-wrap: wrap;
+    gap: 0.5rem !important;
+  }
+}
+
+/* Десктопная версия — инициализация */
+body.desktop-ui {
+  background-color: #f8f9fa;
+}
+
+/* Плавные переходы */
+body.mobile-ui .card,
+body.mobile-ui .btn,
+body.mobile-ui textarea,
+body.mobile-ui .form-control {
+  transition: all 0.2s ease;
+}
