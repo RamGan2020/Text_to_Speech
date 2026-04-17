@@ -1,31 +1,45 @@
-/* App.css — Пользовательские стили приложения */
+/**
+ * App.css — Пользовательские стили приложения TTS/STT.
+ *
+ * Включает:
+ *   - Глобальные стили для карточек, заголовков, аудио-плеера.
+ *   - Индикатор активной записи (пульсирующий красный круг).
+ *   - Медиа-запрос для мобильной версии (body.mobile-ui) — адаптация
+ *     вкладок, кнопок, textarea под экраны < 768px.
+ *   - Плавные CSS-переходы для мобильной версии.
+ */
 
+/* === Глобальные стили страницы === */
 body {
   background-color: #f8f9fa;  /* Светло-серый фон страницы (Bootstrap color) */
   min-height: 100vh;          /* Минимальная высота — весь экран (вертикально) */
 }
 
+/* Карточки — скруглённые углы, без рамки */
 .card {
   border-radius: 12px;  /* Скруглённые углы карточек */
   border: none;         /* Убираем стандартную рамку карточки */
 }
 
+/* Увеличенный внутренний отступ карточки */
 .card-body {
-  padding: 2rem;  /* Внутренний отступ карточки — 2rem (32px) */
+  padding: 2rem;  /* 2rem = 32px — больше воздуха внутри */
 }
 
+/* Скругляем углы аудио-плеера */
 audio {
-  border-radius: 8px;  /* Скруглённые углы аудио-плеера */
+  border-radius: 8px;
 }
 
+/* Заголовок страницы: тёмный, жирный */
 h1 {
   color: #212529;      /* Тёмно-серый цвет заголовка (Bootstrap dark) */
-  font-weight: 700;    /* Жирный шрифт (700 = bold) */
+  font-weight: 700;    /* bold */
 }
 
 /* === Стили для записи с микрофона === */
 
-/* Контейнер индикатора записи */
+/* Контейнер индикатора записи — квадрат 48×48px, центрирует пульсирующий круг */
 .recording-indicator {
   display: flex;
   align-items: center;
@@ -34,24 +48,24 @@ h1 {
   height: 48px;
 }
 
-/* Пульсирующий красный круг */
+/* Пульсирующий красный круг — Bootstrap danger (#dc3545) */
 .pulse-circle {
   width: 20px;
   height: 20px;
   background-color: #dc3545;  /* Bootstrap danger цвет */
   border-radius: 50%;
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: pulse 1.5s ease-in-out infinite;  /* Бесконечная пульсация */
 }
 
-/* Анимация пульсации */
+/* Анимация пульсации: увеличение + уменьшение прозрачности */
 @keyframes pulse {
   0% {
     transform: scale(1);
     opacity: 1;
   }
   50% {
-    transform: scale(1.4);
-    opacity: 0.6;
+    transform: scale(1.4);  /* Увеличение на 40% */
+    opacity: 0.6;            /* Полупрозрачный */
   }
   100% {
     transform: scale(1);
@@ -59,7 +73,7 @@ h1 {
   }
 }
 
-/* Таймер записи */
+/* Таймер записи — моноширинный, крупный, красный */
 .recording-time {
   font-family: 'Courier New', monospace;  /* Моноширинный шрифт */
   font-size: 1.25rem;                     /* Крупный размер */
@@ -67,59 +81,70 @@ h1 {
   color: #dc3545;                         /* Красный цвет */
 }
 
-/* === Мобильная версия === */
+/* === Мобильная версия (экраны < 768px) === */
+/* Класс навешивается из App.jsx по window.innerWidth */
 @media (max-width: 767.98px) {
   body.mobile-ui {
     background-color: #f8f9fa;
   }
 
+  /* Уменьшаем боковые отступы контейнера */
   body.mobile-ui .container {
     padding-left: 12px;
     padding-right: 12px;
   }
 
   body.mobile-ui h1 {
-    font-size: 1.5rem;
+    font-size: 1.5rem;  /* Заголовок поменьше */
   }
 
   body.mobile-ui .text-muted {
-    font-size: 0.85rem;
+    font-size: 0.85rem;  /* Подзаголовок поменьше */
   }
 
+  /* Карточки — уменьшенный padding */
   body.mobile-ui .card-body {
     padding: 1rem;
   }
 
+  /* Вкладки: горизонтальная прокрутка вместо wrap,
+     скрываем скроллбар (webkit, Firefox, IE) */
   body.mobile-ui .nav-pills {
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;  /* Плавная прокрутка iOS */
+    scrollbar-width: none;              /* Firefox */
+    -ms-overflow-style: none;           /* IE/Edge */
   }
 
+  /* Скрываем скроллбар для Webkit (Chrome, Safari) */
   body.mobile-ui .nav-pills::-webkit-scrollbar {
     display: none;
   }
 
+  /* Вкладки-ссылки: nowrap, компакные отступы */
   body.mobile-ui .nav-pills .nav-link {
     white-space: nowrap;
     padding: 0.5rem 0.75rem;
     font-size: 0.9rem;
   }
 
+  /* Textarea: минимальная высота снижена, font-size: 16px
+     предотвращает авто-зум на iOS при фокусе */
   body.mobile-ui textarea,
   body.mobile-ui .form-control[as="textarea"] {
     min-height: 120px !important;
     font-size: 16px;
   }
 
+  /* Крупные кнопки: уменьшаем padding и размер */
   body.mobile-ui .btn-lg {
     padding: 0.6rem 1rem;
     font-size: 1rem;
   }
 
+  /* Индикатор записи: уменьшаем под мобильный экран */
   body.mobile-ui .recording-indicator {
     width: 36px;
     height: 36px;
@@ -134,6 +159,7 @@ h1 {
     font-size: 1rem;
   }
 
+  /* Колонки Bootstrap: на мобильных становятся 100% ширины */
   body.mobile-ui .col-md-6,
   body.mobile-ui .col-md-8,
   body.mobile-ui .col-md-4 {
@@ -148,18 +174,19 @@ h1 {
     margin-bottom: 0;
   }
 
+  /* Flex-контейнер записи: перенос элементов на новую строку */
   body.mobile-ui .d-flex.align-items-center.gap-3 {
     flex-wrap: wrap;
     gap: 0.5rem !important;
   }
 }
 
-/* Десктопная версия — инициализация */
+/* === Десктопная версия === */
 body.desktop-ui {
   background-color: #f8f9fa;
 }
 
-/* Плавные переходы */
+/* Плавные переходы элементов на мобильной версии */
 body.mobile-ui .card,
 body.mobile-ui .btn,
 body.mobile-ui textarea,
