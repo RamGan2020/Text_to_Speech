@@ -1,7 +1,7 @@
 # Инструкция по деплою на Linux-сервер
 
 Данная инструкция описывает процесс установки и запуска приложения на сервере с ОС Linux (Ubuntu/Debian).
-Приложение включает три режима: TTS (синтез речи), STT (распознавание файлов) и запись с микрофона.
+Приложение включает четыре режима: TTS (синтез речи), STT (распознавание файлов), запись с микрофона и DeepSeek AI.
 
 ## Требования
 
@@ -9,8 +9,8 @@
 - Python 3.8+
 - Node.js 18+ и npm
 - Минимум 4 ГБ ОЗУ (Silero TTS ~2 ГБ + Whisper small ~500 МБ)
-- Доступ к интернету (для загрузки моделей при первом запуске)
-- ffmpeg (опционально, для поддержки M4A в STT — не требуется для базовой работы)
+- Доступ к интернету (для загрузки моделей при первом запуске и работы DeepSeek API)
+- HTTPS (обязательно для записи с микрофона в продакшене)
 
 ---
 
@@ -54,10 +54,7 @@ npm --version
 ## Шаг 4: Клонирование проекта
 
 ```bash
-# Переход в домашнюю директорию
 cd ~
-
-# Клонирование репозитория (если проект в Git)
 git clone <URL_РЕПОЗИТОРИЯ> tts-app
 cd tts-app
 
@@ -70,13 +67,12 @@ cd tts-app
 ## Шаг 5: Настройка Backend
 
 ```bash
-# Переход в папку backend
 cd ~/tts-app/backend
 
 # Создание виртуального окружения
 python3 -m venv venv
 
-# Активация виртуального окружения
+# Активация
 source venv/bin/activate
 
 # Обновление pip
@@ -96,14 +92,16 @@ pip install -r requirements.txt
 
 ```bash
 # Открытие нового терминала (или tmux-сессии)
-# Переход в папку frontend
 cd ~/tts-app/frontend
 
-# Установка зависимостей
+# Установка зависимостей (включая sass, vitest, react-hot-toast)
 npm install
 
-# Сборка продакшн-версии
+# Сборка продакшн-версии (SCSS компилируется в CSS)
 npm run build
+
+# Опционально: запуск тестов
+npm test
 ```
 
 После сборки в папке `frontend/dist` появится готовый статический сайт.
@@ -153,16 +151,9 @@ WantedBy=multi-user.target
 Активация и запуск:
 
 ```bash
-# Перезагрузка systemd
 sudo systemctl daemon-reload
-
-# Включение автозапуска
 sudo systemctl enable tts-backend.service
-
-# Запуск сервиса
 sudo systemctl start tts-backend.service
-
-# Проверка статуса
 sudo systemctl status tts-backend.service
 
 # Просмотр логов
@@ -193,6 +184,7 @@ server {
     server_name your-domain.com;  # Замените на свой домен или IP
 
     # Раздача статических файлов фронтенда
+    # Vite proxy (/api → backend) в dev-режиме заменяется на nginx proxy в продакшене
     location / {
         root /home/user/tts-app/frontend/dist;
         index index.html;
@@ -200,43 +192,50 @@ server {
     }
 
     # Проксирование API-запросов на backend (TTS)
-    location /synthesize {
-        proxy_pass http://127.0.0.1:8000;
+    # Все запросы с префиксом /api/* перенаправляются на бэкенд
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 300s;  # Увеличиваем таймаут для длинных текстов
+        proxy_read_timeout 300s;
     }
 
     # Проксирование API-запросов на backend (STT — загрузка файлов)
-    location /transcribe {
-        proxy_pass http://127.0.0.1:8000;
+    location /api/transcribe {
+        proxy_pass http://127.0.0.1:8000/transcribe;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 600s;  # Увеличиваем таймаут для распознавания
-        client_max_body_size 50M;  # Разрешаем загрузку файлов до 50 МБ
+        proxy_read_timeout 600s;
+        client_max_body_size 50M;
     }
 
-    location /health {
-        proxy_pass http://127.0.0.1:8000;
+    # Health endpoint
+    location /api/health {
+        proxy_pass http://127.0.0.1:8000/health;
+    }
+
+    # DeepSeek AI
+    location /api/ask_deepseek {
+        proxy_pass http://127.0.0.1:8000/ask_deepseek;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 120s;  # DeepSeek может отвечать долго
     }
 }
 ```
 
+> **Важно:** фронтенд использует относительные пути `/api/*` (через Vite proxy при разработке).
+> В продакшене nginx берёт на себя роль прокси — все запросы `/api/*` перенаправляются на бэкенд.
+
 ### Активация сайта
 
 ```bash
-# Создание символической ссылки
 sudo ln -s /etc/nginx/sites-available/tts-app /etc/nginx/sites-enabled/
-
-# Удаление дефолтного сайта (опционально)
 sudo rm /etc/nginx/sites-enabled/default
-
-# Проверка конфигурации
 sudo nginx -t
-
-# Перезапуск Nginx
 sudo systemctl restart nginx
 ```
 
@@ -263,14 +262,9 @@ sudo certbot renew --dry-run
 ## Шаг 10: Настройка брандмауэра
 
 ```bash
-# Разрешение HTTP/HTTPS-трафика
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-
-# Включение брандмауэра
 sudo ufw enable
-
-# Проверка статуса
 sudo ufw status
 ```
 
@@ -281,8 +275,10 @@ sudo ufw status
 ### Проверка Backend
 
 ```bash
-# Запрос к health-эндпоинту
+# Запрос к health-эндпоинту (nginx проксирует /api/health → /health)
 curl http://localhost:8000/health
+# Или через nginx:
+curl https://your-domain.com/api/health
 
 # Ожидаемый ответ: {"status": "ok"}
 ```
@@ -322,7 +318,6 @@ cd ~/tts-app/frontend && npm run build
 ## Обновление приложения
 
 ```bash
-# Переход в папку проекта
 cd ~/tts-app
 
 # Обновление из Git (если используется)
@@ -333,9 +328,9 @@ cd backend
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Обновление frontend-зависимостей
+# Обновление frontend-зависимостей и сборка
 cd ../frontend
-npm install
+npm install        # Установит новые пакеты (toast, vitest, sass)
 npm run build
 
 # Перезапуск backend
@@ -349,20 +344,15 @@ sudo systemctl restart tts-backend.service
 ### Backend не запускается
 
 ```bash
-# Проверка логов
 sudo journalctl -u tts-backend.service --no-pager | tail -50
-
-# Проверка, занят ли порт 8000
 sudo lsof -i :8000
-
-# Проверка прав доступа
 ls -la ~/tts-app/backend/
 ```
 
 ### Модель не загружается
 
 ```bash
-# Проверка свободного места
+# Проверка свободного места (модели скачиваются при первом запуске)
 df -h
 
 # ОЗУ может быть недостаточно — модели требуют ~2.5 ГБ в сумме
@@ -372,18 +362,15 @@ free -h
 ### Ошибка распознавания (STT)
 
 ```bash
-# Проверка, загружена ли модель Whisper
 sudo journalctl -u tts-backend.service | grep "Whisper"
-
-# Проверка логов на ошибки
 sudo journalctl -u tts-backend.service | grep -i error
 ```
 
 ### Не работает запись с микрофона
 
 ```bash
-# Проверьте, что сайт открыт через HTTPS (или localhost)
 # MediaRecorder API не работает через HTTP (кроме localhost)
+# Убедитесь, что сайт открыт через HTTPS
 
 # Проверьте консоль браузера (F12) на ошибки
 # Убедитесь, что браузер поддерживает MediaRecorder API
@@ -392,11 +379,21 @@ sudo journalctl -u tts-backend.service | grep -i error
 ### Nginx отдаёт 502 Bad Gateway
 
 ```bash
-# Проверка, работает ли backend
 sudo systemctl status tts-backend.service
-
-# Проверка логов Nginx
 sudo tail -f /var/log/nginx/error.log
+```
+
+### Ошибка при сборке фронтенда (SCSS)
+
+```bash
+# Убедитесь, что sass установлен
+cd ~/tts-app/frontend
+npm list sass
+
+# При необходимости переустановите зависимости
+rm -rf node_modules package-lock.json
+npm install
+npm run build
 ```
 
 ---
@@ -404,17 +401,10 @@ sudo tail -f /var/log/nginx/error.log
 ## Мониторинг
 
 ```bash
-# Загрузка CPU
-top
-
-# Загрузка ОЗУ
-free -h
-
-# Место на диске
-df -h
-
-# Логи backend
-sudo journalctl -u tts-backend.service -f
+top         # Загрузка CPU
+free -h     # Загрузка ОЗУ
+df -h       # Место на диске
+sudo journalctl -u tts-backend.service -f  # Логи backend
 ```
 
 ---
