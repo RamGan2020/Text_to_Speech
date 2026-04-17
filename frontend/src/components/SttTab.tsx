@@ -1,5 +1,5 @@
 /**
- * SttTab.jsx — Вкладка «Речь в Текст» (OpenAI Whisper small).
+ * SttTab.tsx — Вкладка «Речь в Текст» (OpenAI Whisper small).
  *
  * Два способа ввода аудио:
  *   1. Загрузка файла (MP3, WAV, OGG, FLAC, WEBM) — передаётся напрямую на сервер.
@@ -13,23 +13,22 @@ import { Card, Form, Button, Spinner, ProgressBar } from 'react-bootstrap'
 import { useRecording } from '../hooks/useRecording'
 import { validateAudioFile } from '../utils/fileValidation'
 
-/**
- * SttTab
- *
- * @param {boolean} props.globalLoading — глобальный флаг загрузки
- * @param {(v: boolean) => void} props.onGlobalLoadingChange — установить глобальную загрузку
- * @param {(msg: string | null) => void} props.onError — показать ошибку вкладки STT
- * @param {(text: string) => void} props.onSetRecognizedText — передать распознанный текст в App
- */
-export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, onSetRecognizedText }) {
+interface SttTabProps {
+  globalLoading: boolean;
+  onGlobalLoadingChange: (loading: boolean) => void;
+  onError: (error: string | null) => void;
+  onSetRecognizedText: (text: string) => void;
+}
+
+export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, onSetRecognizedText }: SttTabProps) {
   // Ref к input[type=file] — позволяет прочитать выбранный файл и сбросить значение
-  const fileInputRef = useRef(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   // Выбранный файл (для отображения размера и информации)
-  const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   // Индикатор прогресса для долгих операций (эмуляция)
-  const [progress, setProgress] = useState(0)
+  const [progress, setProgress] = useState<number>(0)
   // Показывать ли прогресс-бар
-  const [showProgress, setShowProgress] = useState(false)
+  const [showProgress, setShowProgress] = useState<boolean>(false)
 
   // Хук useRecording инкапсулирует всю логику записи микрофона:
   // запрос доступа, MediaRecorder, конвертация WebM → WAV, управление Blob URL
@@ -43,14 +42,14 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
   } = useRecording(onError)
 
   // Форматирует секунды в MM:SS (например, 75 → "01:15")
-  const formatTime = (seconds) => {
+  const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
   // При выборе файла — валидация + сброс предыдущего результата
-  const handleFileChange = async (e) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) {
       setSelectedFile(null)
@@ -122,8 +121,8 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
 
       const data = await response.json()
       onSetRecognizedText?.(data.text)
-    } catch (err) {
-      onError?.(err.message || 'Произошла ошибка при распознавании')
+    } catch (err: unknown) {
+      onError?.((err instanceof Error) ? err.message : 'Произошла ошибка при распознавании')
     } finally {
       onGlobalLoadingChange?.(false)
       // Скрываем прогресс-бар с задержкой для плавного исчезновения
@@ -177,8 +176,8 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
 
       const data = await resp.json()
       onSetRecognizedText?.(data.text)
-    } catch (err) {
-      onError?.(err.message || 'Произошла ошибка при распознавании')
+    } catch (err: unknown) {
+      onError?.((err instanceof Error) ? err.message : 'Произошла ошибка при распознавании')
     } finally {
       onGlobalLoadingChange?.(false)
       setTimeout(() => {

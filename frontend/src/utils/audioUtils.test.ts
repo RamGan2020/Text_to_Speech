@@ -13,14 +13,15 @@
  */
 import { describe, it, expect } from 'vitest'
 import { audioBufferToWav } from './audioUtils'
+import type { AudioBlobLike } from '../types/api'
 
 // Мок AudioBuffer — создаём минимальный объект для тестирования
-function createMockAudioBuffer(numChannels, sampleRate, length, channelData) {
+function createMockAudioBuffer(numChannels: number, sampleRate: number, length: number, channelData: Float32Array[]): AudioBlobLike {
   return {
     numberOfChannels: numChannels,
     sampleRate,
     length,
-    getChannelData(idx) {
+    getChannelData(idx: number) {
       return channelData[idx]
     },
   }

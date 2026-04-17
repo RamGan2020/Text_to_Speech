@@ -1,9 +1,9 @@
 /**
- * useToastError.js — Custom hook, который превращает onError-коллбэк
+ * useToastError.ts — Custom hook, который превращает onError-коллбэк
  * в toast.error(), сохраняя при этом setState-вызов для родительского компонента.
  *
  * Цель: компоненты вкладок продолжают вызывать onError('сообщение'),
- * но вместо Alert теперь появляется Toast. При этом Alert-блоки в App.jsx
+ * но вместо Alert теперь появляется Toast. При этом Alert-блоки в App.tsx
  * сохраняются для совместимости — toast дублирует сообщение, а не заменяет.
  *
  * Использование:
@@ -17,12 +17,12 @@ import toast from 'react-hot-toast'
  * Возвращает обёртку, которая вызывает toast.error() и опционально
  * передаёт сообщение дальше в родительский onError коллбэк.
  *
- * @param {(msg: string|null) => void} [parentOnError] — родительский коллбэк (setTtsError и т.п.)
- * @returns {(msg: string|null) => void} — функция onError с toast
+ * @param parentOnError — родительский коллбэк (setTtsError и т.п.)
+ * @returns функция onError с toast
  */
-export function useToastError(parentOnError) {
+export function useToastError(parentOnError?: (msg: string | null) => void) {
   return useCallback(
-    (msg) => {
+    (msg: string | null) => {
       if (msg) {
         toast.error(msg)
       }
@@ -35,12 +35,12 @@ export function useToastError(parentOnError) {
 /**
  * Аналогично для успешных уведомлений.
  *
- * @param {() => void} [onSuccess] — дополнительный коллбэк при успехе
- * @returns {(msg: string) => void}
+ * @param onSuccess — дополнительный коллбэк при успехе
+ * @returns функция onSuccess с toast
  */
-export function useToastSuccess(onSuccess) {
+export function useToastSuccess(onSuccess?: () => void) {
   return useCallback(
-    (msg) => {
+    (msg: string) => {
       toast.success(msg)
       onSuccess?.()
     },

@@ -13,8 +13,11 @@ import { useState } from 'react'
 import { Card, Form, Button, Spinner, Row, Col } from 'react-bootstrap'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
+// Тип для моделей DeepSeek API
+type DeepSeekModel = 'deepseek-chat' | 'deepseek-reasoner'
+
 // Доступные модели DeepSeek API
-const DEEPSEEK_MODELS = [
+const DEEPSEEK_MODELS: { value: DeepSeekModel; label: string }[] = [
   { value: 'deepseek-chat', label: 'deepseek-chat (быстрая)' },
   { value: 'deepseek-reasoner', label: 'deepseek-reasoner (рассуждения)' },
 ]
@@ -40,35 +43,34 @@ const DEEPSEEK_SYSTEM_PROMPTS = [
   },
 ]
 
-/**
- * DeepseekTab
- *
- * @param {boolean} props.globalLoading — глобальный флаг загрузки (из App)
- * @param {(v: boolean) => void} props.onGlobalLoadingChange — установить глобальную загрузку
- * @param {(msg: string | null) => void} props.onError — показать ошибку вкладки DeepSeek
- * @param {(audioUrl: string) => void} props.onSwitchToTts — синтезировать ответ и перейти на TTS
- */
+interface DeepseekTabProps {
+  globalLoading: boolean;
+  onGlobalLoadingChange: (loading: boolean) => void;
+  onError: (error: string | null) => void;
+  onSwitchToTts: (audioUrl: string) => void;
+}
+
 export default function DeepseekTab({
   globalLoading,
   onGlobalLoadingChange,
   onError,
   onSwitchToTts,
-}) {
+}: DeepseekTabProps) {
   // API-ключ DeepSeek — хранится в компоненте, не отправляется на сервер отдельно.
   // При запросе передаётся в теле JSON (бэкенд создаёт OpenAI SDK client).
-  const [apiKey, setApiKey] = useState('')
+  const [apiKey, setApiKey] = useState<string>('')
   // Текст вопроса
-  const [question, setQuestion] = useState('')
+  const [question, setQuestion] = useState<string>('')
   // Текст ответа от DeepSeek — отображается в textarea для чтения/копирования
-  const [answer, setAnswer] = useState('')
+  const [answer, setAnswer] = useState<string>('')
   // Локальный флаг загрузки для запроса к DeepSeek (не блокирует остальной интерфейс)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<boolean>(false)
   // Локальная ошибка (не пересекается с onError — это для UI-сообщений компонента)
-  const [error, setLocalError] = useState(null)
+  const [localError, setLocalError] = useState<string | null>(null)
   // Модель DeepSeek — сохраняется в localStorage для персистентности
-  const [model, setModel] = useLocalStorage('ds-model', 'deepseek-chat')
+  const [model, setModel] = useLocalStorage<DeepSeekModel>('ds-model', 'deepseek-chat')
   // Системный промпт — сохраняется в localStorage (выбранная роль ассистента)
-  const [systemPrompt, setSystemPrompt] = useLocalStorage('ds-system-prompt', '')
+  const [systemPrompt, setSystemPrompt] = useLocalStorage<string>('ds-system-prompt', '')
 
   // Блокировка кнопки «Озвучить ответ» — учитывает как локальную, так и глобальную загрузку
   const isLoading = loading || globalLoading
@@ -103,8 +105,8 @@ export default function DeepseekTab({
 
       const data = await response.json()
       setAnswer(data.answer)
-    } catch (err) {
-      setLocalError(err.message || 'Произошла ошибка при запросе к DeepSeek')
+    } catch (err: unknown) {
+      setLocalError((err instanceof Error) ? err.message : 'Произошла ошибка при запросе к DeepSeek')
     } finally {
       setLoading(false)
     }
@@ -147,8 +149,8 @@ export default function DeepseekTab({
       if (onSwitchToTts) {
         onSwitchToTts(audioUrl)
       }
-    } catch (err) {
-      onError?.(err.message || 'Произошла ошибка при синтезе')
+    } catch (err: unknown) {
+      onError?.((err instanceof Error) ? err.message : 'Произошла ошибка при синтезе')
     } finally {
       onGlobalLoadingChange?.(false)
     }
@@ -192,7 +194,7 @@ export default function DeepseekTab({
             <Col xs={12} md={6}>
               <Form.Group>
                 <Form.Label>Модель</Form.Label>
-                <Form.Select value={model} onChange={(e) => setModel(e.target.value)}>
+                <Form.Select value={model} onChange={(e) => setModel(e.target.value as DeepSeekModel)}>
                   {DEEPSEEK_MODELS.map((m) => (
                     <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
@@ -302,8 +304,8 @@ export default function DeepseekTab({
       )}
 
       {/* Локальное сообщение об ошибке (отдельный блок, не через Alert) */}
-      {error && (
-        <div className="text-danger mt-2">{error}</div>
+      {localError && (
+        <div className="text-danger mt-2">{localError}</div>
       )}
     </>
   )

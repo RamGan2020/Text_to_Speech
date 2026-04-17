@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
     "bootstrap": "^5.3.2",
@@ -20,9 +22,16 @@
   "devDependencies": {
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.7",
     "jsdom": "^23.0.1",
     "sass": "^1.69.5",
+    "typescript": "^5.3.3",
     "vite": "^5.0.8",
     "vitest": "^1.1.0"
   }

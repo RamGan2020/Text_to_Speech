@@ -1,5 +1,5 @@
 /**
- * App.jsx — Корневой контейнер приложения TTS/STT/DeepSeek.
+ * App.tsx — Корневой контейнер приложения TTS/STT/DeepSeek.
  *
  * После рефакторинга это тонкий «оркестратор»:
  *   - Хранит глобальное состояние (загрузка, ошибки, результаты)
@@ -10,33 +10,37 @@
  *   - Передаёт коллбэки в дочерние компоненты для связи между ними
  */
 import { useState, useEffect } from 'react'
-import { Container, Tabs, Tab, Card, Form, Button } from 'react-bootstrap'
+import { Container, Tabs, Tab } from 'react-bootstrap'
 import './App.css'
 // Импорт рефакторенных компонентов — каждая вкладка в своём файле
 import TtsTab from './components/TtsTab'
 import SttTab from './components/SttTab'
 import DeepseekTab from './components/DeepseekTab'
+import TtsResultCard from './components/TtsResultCard'
+import SttResultCard from './components/SttResultCard'
 // Toast-уведомления — заменяют Alert-блоки (но Alert оставлен для совместимости)
 import ToastNotifier from './components/ToastNotifier'
 
 import { useToastError } from './hooks/useToastError'
-import { OfflineBanner } from './hooks/useOnlineStatus.jsx'
+import { OfflineBanner } from './hooks/useOnlineStatus'
 
-/** App — главный компонент, рендерится в main.jsx */
+type ActiveTab = 'tts' | 'stt' | 'deepseek';
+
+/** App — главный компонент, рендерится в main.tsx */
 export default function App() {
   // Ключ выбранной вкладки: 'tts' | 'stt' | 'deepseek'
-  const [activeTab, setActiveTab] = useState('tts')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('tts')
   // Глобальный флаг загрузки — блокирует элементы интерфейса во всех вкладках
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<boolean>(false)
   // Сообщения об ошибках для каждой вкладки (хранятся для совместимости с Alert,
   // но основная доставка — через toast)
-  const [ttsError, setTtsError] = useState(null)
-  const [sttError, setSttError] = useState(null)
-  const [deepseekError, setDeepseekError] = useState(null)
+  const [_ttsError, setTtsError] = useState<string | null>(null)
+  const [_sttError, setSttError] = useState<string | null>(null)
+  const [_deepseekError, setDeepseekError] = useState<string | null>(null)
   // Распознанный текст из STT — передаётся в SttTab и отображается через SttResultCard
-  const [recognizedText, setRecognizedText] = useState('')
+  const [recognizedText, setRecognizedText] = useState<string>('')
   // URL синтезированного аудио из функции «Озвучить ответ» во вкладке DeepSeek
-  const [ttsAudioUrl, setTtsAudioUrl] = useState(null)
+  const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null)
 
   // Обёртки над onError, которые выводят toast.error() + обновляют стейт
   const ttsOnError = useToastError(setTtsError)
@@ -52,7 +56,7 @@ export default function App() {
 
   // Вызывается из DeepseekTab при нажатии «Озвучить ответ» —
   // синтезирует речь из ответа и переключает пользователя на TTS-вкладку
-  const handleSwitchToTtsWithAudio = (audioUrl) => {
+  const handleSwitchToTtsWithAudio = (audioUrl: string) => {
     setTtsAudioUrl(audioUrl)
     setActiveTab('tts')
   }
@@ -70,7 +74,8 @@ export default function App() {
       <Tabs
         activeKey={activeTab}
         onSelect={(k) => {
-          setActiveTab(k)
+          const newTab = k === 'stt' || k === 'deepseek' ? k : 'tts';
+          setActiveTab(newTab);
           // При смене вкладки убираем ошибки — они относятся к предыдущей
           setTtsError(null)
           setSttError(null)
@@ -118,65 +123,5 @@ export default function App() {
       {/* Toast-уведомления — заменяют inline Alert-блоки */}
       <ToastNotifier />
     </Container>
-  )
-}
-
-/** TtsResultCard — карточка с аудио-плеером и кнопкой скачивания MP3 */
-function TtsResultCard({ audioUrl }) {
-  // Фиксируем URL в стейте, чтобы avoid re-creation при ре-рендерах родителя
-  const [url] = useState(audioUrl)
-
-  // Скачиваем аудио через программный клик по ссылке <a>
-  const handleDownload = () => {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'speech.mp3'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-  }
-
-  return (
-    <Card className="shadow-sm mt-3">
-      <Card.Body>
-        <h5 className="card-title">Результат</h5>
-        <audio controls src={url} className="w-100 mb-3">
-          Ваш браузер не поддерживает аудио элемент.
-        </audio>
-        <div className="d-grid">
-          <Button variant="success" onClick={handleDownload}>
-            Скачать MP3
-          </Button>
-        </div>
-      </Card.Body>
-    </Card>
-  )
-}
-
-/** SttResultCard — карточка с распознанным текстом и кнопкой копирования */
-function SttResultCard({ text }) {
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text)
-  }
-
-  return (
-    <Card className="shadow-sm mt-3">
-      <Card.Body>
-        <h5 className="card-title">Распознанный текст</h5>
-        <Form.Control
-          as="textarea"
-          rows={10}
-          value={text}
-          readOnly
-          className="mb-3"
-          style={{ resize: 'vertical', minHeight: '200px' }}
-        />
-        <div className="d-grid">
-          <Button variant="info" onClick={handleCopy}>
-            Копировать текст
-          </Button>
-        </div>
-      </Card.Body>
-    </Card>
-  )
+)
 }

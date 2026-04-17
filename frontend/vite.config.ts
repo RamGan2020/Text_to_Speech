@@ -1,5 +1,5 @@
 /**
- * vite.config.js — Конфигурация Vite для React-фронтенда.
+ * vite.config.ts — Конфигурация Vite для React-фронтенда.
  *
  * Определяет:
  *   - Плагин @vitejs/plugin-react (для JSX и Fast Refresh).

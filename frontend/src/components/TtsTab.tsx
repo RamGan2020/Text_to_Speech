@@ -1,5 +1,5 @@
 /**
- * TtsTab.jsx — Вкладка «Текст в Речь» (Silero TTS).
+ * TtsTab.tsx — Вкладка «Текст в Речь» (Silero TTS).
  *
  * Позволяет пользователю:
  *   1. Ввести текст и синтезировать его в MP3-аудио (бэкенд /api/synthesize).
@@ -16,9 +16,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Card, Form, Button, Alert, Spinner, Row, Col } from 'react-bootstrap'
 import PodcastModePanel from './PodcastModePanel'
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import type { Speaker, SpeakerOption } from '../types/api'
 
 // Доступные голоса Silero TTS — ключи должны совпадать с бэкендом (tts_service.py).
-const SPEAKERS = [
+const SPEAKERS: SpeakerOption[] = [
   { value: 'kseniya', label: 'Ксения (женский)' },
   { value: 'xenia', label: 'Ксения (вариант, женский)' },
   { value: 'baya', label: 'Бая (женский)' },
@@ -26,38 +27,37 @@ const SPEAKERS = [
   { value: 'eugene', label: 'Евгений (мужской)' },
 ]
 
-/**
- * TtsTab
- *
- * @param {boolean} props.globalLoading — глобальный флаг загрузки (из App)
- * @param {(v: boolean) => void} props.onGlobalLoadingChange — установить глобальную загрузку
- * @param {(msg: string | null) => void} props.onError — показать ошибку вкладки TTS
- */
-export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }) {
+interface TtsTabProps {
+  globalLoading: boolean;
+  onGlobalLoadingChange: (loading: boolean) => void;
+  onError: (error: string | null) => void;
+}
+
+export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }: TtsTabProps) {
   // Текст, введённый пользователем в textarea
-  const [text, setText] = useState('')
+  const [text, setText] = useState<string>('')
   // Blob URL синтезированного MP3 — для аудио-плеера и скачивания
-  const [audioUrl, setAudioUrl] = useState(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
 
   // Настройки TTS — сохраняются в localStorage для персистентности
   // Голос по умолчанию: kseniya
-  const [speaker, setSpeaker] = useLocalStorage('tts-speaker', 'kseniya')
+  const [speaker, setSpeaker] = useLocalStorage<Speaker>('tts-speaker', 'kseniya')
   // Выбранный голос для тега [voice:] в режиме подкаста
-  const [templateVoice, setTemplateVoice] = useLocalStorage('tts-template-voice', 'kseniya')
+  const [templateVoice, setTemplateVoice] = useLocalStorage<Speaker>('tts-template-voice', 'kseniya')
   // Значение паузы для тега [pause:]
-  const [pauseTemplateValue, setPauseTemplateValue] = useState('1.0')
+  const [pauseTemplateValue, setPauseTemplateValue] = useState<string>('1.0')
   // Опции синтеза — расстановка ударений (put_accent)
-  const [putAccent, setPutAccent] = useLocalStorage('tts-put-accent', true)
+  const [putAccent, setPutAccent] = useLocalStorage<boolean>('tts-put-accent', true)
   // Опции синтеза — автозамена «Е» на «Ё» в нужных позициях
-  const [putYo, setPutYo] = useLocalStorage('tts-put-yo', true)
+  const [putYo, setPutYo] = useLocalStorage<boolean>('tts-put-yo', true)
   // Флаг режима подкаста — включает панель PodcastModePanel
-  const [podcastMode, setPodcastMode] = useLocalStorage('tts-podcast-mode', false)
+  const [podcastMode, setPodcastMode] = useLocalStorage<boolean>('tts-podcast-mode', false)
 
   // Максимальная длина текста для синтеза (защита от перегрузки сервера)
   const MAX_TEXT_LENGTH = 5000
 
   // Ref для textarea — нужен для вставки тегов в позицию курсора
-  const textInputRef = useRef(null)
+  const textInputRef = useRef<HTMLTextAreaElement>(null)
 
   // Отзываем Blob URL при размонтировании компонента (предотвращаем утечку памяти)
   useEffect(() => {
@@ -101,8 +101,8 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
       // Бэкенд возвращает аудио как binary blob. Создаём URL для плеера.
       const blob = await response.blob()
       setAudioUrl(URL.createObjectURL(blob))
-    } catch (err) {
-      onError?.(err.message || 'Произошла ошибка при синтезе')
+    } catch (err: unknown) {
+      onError?.((err instanceof Error) ? err.message : 'Произошла ошибка при синтезе')
     } finally {
       onGlobalLoadingChange?.(false)
     }
@@ -129,7 +129,7 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
 
   // === Утилита: вставить текст в позицию курсора textarea ===
   // Если textarea не виден (ref null), добавляем в конец строки.
-  const insertIntoTextAtCursor = (insertText) => {
+  const insertIntoTextAtCursor = (insertText: string) => {
     const textarea = textInputRef.current
     if (!textarea) {
       setText((prev) => `${prev}${prev ? '\n' : ''}${insertText}`)
@@ -197,7 +197,7 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
             <Col xs={12} md={6}>
               <Form.Group>
                 <Form.Label>Голос</Form.Label>
-                <Form.Select value={speaker} onChange={(e) => setSpeaker(e.target.value)}>
+                <Form.Select value={speaker} onChange={(e) => setSpeaker(e.target.value as Speaker)}>
                   {SPEAKERS.map((s) => (
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
@@ -243,7 +243,7 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
               <PodcastModePanel
                 speakers={SPEAKERS}
                 templateVoice={templateVoice}
-                onTemplateVoiceChange={(e) => setTemplateVoice(e.target.value)}
+                onTemplateVoiceChange={(e) => setTemplateVoice(e.target.value as Speaker)}
                 pauseTemplateValue={pauseTemplateValue}
                 onPauseTemplateValueChange={(e) => setPauseTemplateValue(e.target.value)}
                 onInsertVoiceTag={handleInsertVoiceTag}

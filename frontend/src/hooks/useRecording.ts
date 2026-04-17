@@ -1,5 +1,5 @@
 /**
- * useRecording.js — Custom React-hook для записи аудио с микрофона браузера.
+ * useRecording.ts — Custom React-hook для записи аудио с микрофона браузера.
  *
  * Отвечает за полный цикл: запрос доступа → запись (MediaRecorder) → декодирование
  * WebM → конвертация в WAV (через audioBufferToWav) → возврат Blob-а.
@@ -14,25 +14,28 @@
  *   - micState: 'idle' | 'requesting' | 'recording'  — состояние микрофона
  *   - recordedBlobUrl: строка Blob URL для проигрывания и отправки на сервер
  *   - recordingTime: секунды записанного аудио
+
  *   - startRecording / stopRecording / resetRecording / stopAll — действия
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { audioBufferToWav } from '../utils/audioUtils'
 
-export function useRecording(onError) {
+type MicState = 'idle' | 'requesting' | 'recording';
+
+export function useRecording(onError?: (msg: string) => void) {
   // Состояние микрофона: 'idle' — неактивен, 'requesting' — запрашиваем доступ, 'recording' — пишется
-  const [micState, setMicState] = useState('idle')
+  const [micState, setMicState] = useState<MicState>('idle')
   // Готовый WAV Blob (для отправки на сервер)
-  const [recordedBlob, setRecordedBlob] = useState(null)
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   // Blob URL для тега audio и выборки данных
-  const [recordedBlobUrl, setRecordedBlobUrl] = useState(null)
+  const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null)
   // Таймер записи в секундах
-  const [recordingTime, setRecordingTime] = useState(0)
+  const [recordingTime, setRecordingTime] = useState<number>(0)
 
   // Ref'ы хранят мутабельные объекты, которые не должны вызывать ре-рендер
-  const mediaRecorderRef = useRef(null)  // экземпляр MediaRecorder
-  const streamRef = useRef(null)         // MediaStream — треки нужно остановить при очистке
-  const timerRef = useRef(null)          // setInterval ID таймера счётчика времени
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)  // экземпляр MediaRecorder
+  const streamRef = useRef<MediaStream | null>(null)         // MediaStream — треки нужно остановить при очистке
+  const timerRef = useRef<number | null>(null)          // setInterval ID таймера счётчика времени
 
   // Отзываем Blob URL при размонтировании или изменении recordedBlobUrl (fix memory leak).
   // Функция-очиститель в useEffect срабатывает и при re-render, и при unmount.
@@ -83,7 +86,7 @@ export function useRecording(onError) {
       const mediaRecorder = new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
 
-      const chunks = []
+      const chunks: BlobPart[] = []
 
       // При поступлении чанка добавляем его в массив
       mediaRecorder.ondataavailable = (e) => {
@@ -98,13 +101,13 @@ export function useRecording(onError) {
         const webmBlob = new Blob(chunks, { type: 'audio/webm' })
 
         // Создаём AudioContext для декодирования в PCM
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        const audioContext = new (window.AudioContext || (window as unknown as Record<string, typeof window>).AudioContext)()
         const reader = new FileReader()
 
         reader.onload = async (e) => {
           try {
             // Декодируем WebM → AudioBuffer (PCM, Float32)
-            const audioBuffer = await audioContext.decodeAudioData(e.target.result)
+            const audioBuffer = await audioContext.decodeAudioData(e.target?.result as ArrayBuffer)
 
             // Конвертируем AudioBuffer → WAV Blob (Int16, 44-byte header)
             const wavBlob = audioBufferToWav(audioBuffer)
@@ -113,7 +116,8 @@ export function useRecording(onError) {
             setRecordedBlob(wavBlob)
             setRecordedBlobUrl(URL.createObjectURL(wavBlob))
           } catch (err) {
-            onError?.('Ошибка обработки аудио: ' + err.message)
+            const message = err instanceof Error ? err.message : String(err);
+             onError?.('Ошибка обработки аудио: ' + message);
           } finally {
             // Закрываем AudioContext, освобождаем ресурсы
             audioContext.close()
@@ -145,7 +149,8 @@ export function useRecording(onError) {
       }, 1000)
     } catch (err) {
       // Пользователь отклонил доступ / нет микрофона
-      onError?.('Не удалось получить доступ к микрофону: ' + err.message)
+      const message = err instanceof Error ? err.message : String(err);
+      onError?.('Не удалось получить доступ к микрофону: ' + message);
       cleanup()
       setMicState('idle')
     }

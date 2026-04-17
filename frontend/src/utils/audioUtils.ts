@@ -1,5 +1,5 @@
 /**
- * audioUtils.js — Преобразование AudioBuffer в WAV-файл для отправки на бэкенд.
+ * audioUtils.ts — Преобразование AudioBuffer в WAV-файл для отправки на бэкенд.
  *
  * При записи с микрофона браузер отдаёт WebM (Opus). Бэкенд (Whisper в librosa)
  * не умеет читать WebM прямо из памяти, поэтому мы декодируем его через Web Audio API
@@ -10,9 +10,11 @@
  * Интерливинг — данные каналов записываются попеременно: L R L R ...
  */
 
+import type { AudioBlobLike } from '../types/api'
+
 // Записывает ASCII-строку в DataView по указанному смещению.
 // Используется для сигнатур 'RIFF', 'WAVE', 'fmt ', 'data'.
-function writeString(view, offset, str) {
+function writeString(view: DataView, offset: number, str: string): void {
   for (let i = 0; i < str.length; i++) {
     view.setUint8(offset + i, str.charCodeAt(i))
   }
@@ -35,8 +37,9 @@ function writeString(view, offset, str) {
  * @param {AudioBuffer} buffer — декодированный аудио из AudioContext
  * @returns {Blob} WAV-файл для загрузки на сервер
  */
-export function audioBufferToWav(buffer) {
-  const { numberOfChannels: numChannels, sampleRate } = buffer
+export function audioBufferToWav(buffer: AudioBlobLike): Blob {
+  const numChannels = buffer.numberOfChannels
+  const { sampleRate } = buffer
   const format = 1       // PCM (без сжатия)
   const bitDepth = 16
 

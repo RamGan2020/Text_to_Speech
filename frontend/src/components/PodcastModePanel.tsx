@@ -10,6 +10,7 @@
  * Получает все коллбэки из TtsTab через пропсы — не хранит своего состояния текста.
  */
 import { Card, Row, Col, Button, Form } from 'react-bootstrap'
+import type { SpeakerOption } from '../types/api'
 
 // Готовые примеры текстов с тегами [voice:] и [pause:]
 // При нажатии кнопки example.replace('Весь текущий текст') в родительском TtsTab
@@ -41,19 +42,18 @@ const PODCAST_EXAMPLES = [
   },
 ]
 
-/**
- * PodcastModePanel
- *
- * @param {Array} props.speakers — список доступных голосов (SPEAKERS из TtsTab)
- * @param {string} props.templateVoice — выбранный голос для вставки тега
- * @param {(e) => void} props.onTemplateVoiceChange — смена выбранного голоса
- * @param {string} props.pauseTemplateValue — значение паузы (1.0, 1.5s, 500ms)
- * @param {(e) => void} props.onPauseTemplateValueChange — смена значения паузы
- * @param {() => void} props.onInsertVoiceTag — вставить [voice:X] в позицию курсора
- * @param {() => void} props.onInsertPauseTag — вставить [pause:X] в позицию курсора
- * @param {(text: string) => void} props.onInsertExample — пример заменяет весь текст
- * @param {boolean} props.loading — флаг загрузки (блокирует кнопки)
- */
+interface PodcastModePanelProps {
+  speakers: SpeakerOption[];
+  templateVoice: string;
+  onTemplateVoiceChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  pauseTemplateValue: string;
+  onPauseTemplateValueChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onInsertVoiceTag: () => void;
+  onInsertPauseTag: () => void;
+  onInsertExample: (text: string) => void;
+  loading: boolean;
+}
+
 export default function PodcastModePanel({
   speakers,
   templateVoice,
@@ -64,7 +64,7 @@ export default function PodcastModePanel({
   onInsertPauseTag,
   onInsertExample,
   loading,
-}) {
+}: PodcastModePanelProps) {
   return (
     <Card className="mb-3 border-info-subtle">
       <Card.Body>
