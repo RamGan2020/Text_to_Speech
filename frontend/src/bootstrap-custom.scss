@@ -1,0 +1,48 @@
+/**
+ * bootstrap-custom.scss — Выборочный импорт компонентов Bootstrap 5.
+ *
+ * Вместо полного импорта bootstrap.min.css (~200 КБ),
+ * подключаем только те компоненты, которые реально
+ * используются в приложении.
+ *
+ * Экономия: исключаются компоненты, которые не используются:
+ *   - modal (модальные окна — не используем)
+ *   - dropdown (выпадающие списки — не используем)
+ *   - carousel (слайдер)
+ *   - offcanvas
+ *   - tooltip / popover
+ *   - accordion
+ *   - list-group
+ *   - breadcrumb
+ *   - pagination
+ *   - table
+ */
+
+// === Ядро Bootstrap ===
+@import "bootstrap/scss/functions";
+@import "bootstrap/scss/variables";
+@import "bootstrap/scss/variables-dark";
+@import "bootstrap/scss/maps";
+@import "bootstrap/scss/mixins";
+@import "bootstrap/scss/utilities";
+
+// === Глобальные стили ===
+@import "bootstrap/scss/root";       // :root с цветами, брейкпоинтами
+@import "bootstrap/scss/reboot";     // CSS reset/normalize
+@import "bootstrap/scss/type";       // Типографика (h1-h6, p, text-muted)
+@import "bootstrap/scss/images";     // img-fluid
+@import "bootstrap/scss/containers"; // .container
+
+// === Компоненты (только используемые) ===
+@import "bootstrap/scss/buttons";    // .btn
+@import "bootstrap/scss/card";       // .card, .card-body
+@import "bootstrap/scss/forms";      // .form-control, .form-select
+@import "bootstrap/scss/nav";        // .nav (основа для вкладок)
+@import "bootstrap/scss/progress";   // .progress (индикатор транскрипции)
+@import "bootstrap/scss/spinners";   // .spinner-border (лоадеры)
+@import "bootstrap/scss/alert";      // .alert (оффлайн-баннер)
+@import "bootstrap/scss/badge";      // .badge (индикатор записи)
+@import "bootstrap/scss/close";      // Кнопка закрытия
+
+// === Утилиты (все — они небольшие, ~10 КБ) ===
+@import "bootstrap/scss/utilities/api";

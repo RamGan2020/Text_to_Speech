@@ -124,23 +124,31 @@ class DeepSeekService:
             )
 
 
-# Singleton-экземпляр сервиса (создаётся при первом вызове)
+# Singleton-экземпляр сервиса с возможностью пересоздания при смене ключа
 _deepseek_service: Optional[DeepSeekService] = None
+_cached_api_key: Optional[str] = None
 
 
 def get_deepseek_service(api_key: Optional[str] = None) -> DeepSeekService:
     """Получить экземпляр DeepSeekService (singleton).
 
+    Пересоздаёт сервис при смене API-ключа, чтобы не использовать старый клиент.
+
     Args:
-        api_key: API-ключ (если не указан, используется из предыдущего вызова или окружения).
+        api_key: API-ключ (пустое значение → используется ключ из предыдущего вызова
+                 или переменная окружения DEEPSEEK_API_KEY).
 
     Returns:
         DeepSeekService: Экземпляр сервиса.
     """
-    global _deepseek_service
+    global _deepseek_service, _cached_api_key
 
-    # Если сервис ещё не создан или передан новый ключ — создаём заново
-    if _deepseek_service is None or api_key is not None:
-        _deepseek_service = DeepSeekService(api_key=api_key)
+    # Если ключа нет в вызове, используем закэшированный (или None)
+    effective_key = api_key if api_key is not None else _cached_api_key
+
+    # Пересоздаём если: сервис ещё не создан, ИЛИ ключ изменился
+    if _deepseek_service is None or effective_key != _cached_api_key:
+        _deepseek_service = DeepSeekService(api_key=effective_key)
+        _cached_api_key = effective_key
 
     return _deepseek_service

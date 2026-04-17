@@ -11,7 +11,9 @@
 import React from 'react'             // Нужен для JSX-трансляции (React 17+)
 import ReactDOM from 'react-dom/client' // Новый API рендеринга (React 18)
 import App from './App.jsx'            // Корневой компонент приложения
-import 'bootstrap/dist/css/bootstrap.min.css' // CSS-фреймворк Bootstrap 5.3
+// Выборочный импорт Bootstrap 5 SCSS — только нужные компоненты (кнопки, карточки, формы и т.д.)
+// Заменяет полный bootstrap.min.css (~200 КБ) на ~120-140 КБ
+import './bootstrap-custom.scss'
 
 // Создаём React root в элементе с id="root" и рендерим приложение
 ReactDOM.createRoot(document.getElementById('root')).render(

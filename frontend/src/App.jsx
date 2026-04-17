@@ -10,12 +10,17 @@
  *   - Передаёт коллбэки в дочерние компоненты для связи между ними
  */
 import { useState, useEffect } from 'react'
-import { Container, Tabs, Tab, Alert, Card, Form, Button } from 'react-bootstrap'
+import { Container, Tabs, Tab, Card, Form, Button } from 'react-bootstrap'
 import './App.css'
-// Импорт рефакторенных компонентов — каждый вкладка в своём файле
+// Импорт рефакторенных компонентов — каждая вкладка в своём файле
 import TtsTab from './components/TtsTab'
 import SttTab from './components/SttTab'
 import DeepseekTab from './components/DeepseekTab'
+// Toast-уведомления — заменяют Alert-блоки (но Alert оставлен для совместимости)
+import ToastNotifier from './components/ToastNotifier'
+
+import { useToastError } from './hooks/useToastError'
+import { OfflineBanner } from './hooks/useOnlineStatus.jsx'
 
 /** App — главный компонент, рендерится в main.jsx */
 export default function App() {
@@ -23,7 +28,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('tts')
   // Глобальный флаг загрузки — блокирует элементы интерфейса во всех вкладках
   const [loading, setLoading] = useState(false)
-  // Сообщения об ошибках для каждой вкладки отдельно (чтобы не перемешивались)
+  // Сообщения об ошибках для каждой вкладки (хранятся для совместимости с Alert,
+  // но основная доставка — через toast)
   const [ttsError, setTtsError] = useState(null)
   const [sttError, setSttError] = useState(null)
   const [deepseekError, setDeepseekError] = useState(null)
@@ -31,6 +37,11 @@ export default function App() {
   const [recognizedText, setRecognizedText] = useState('')
   // URL синтезированного аудио из функции «Озвучить ответ» во вкладке DeepSeek
   const [ttsAudioUrl, setTtsAudioUrl] = useState(null)
+
+  // Обёртки над onError, которые выводят toast.error() + обновляют стейт
+  const ttsOnError = useToastError(setTtsError)
+  const sttOnError = useToastError(setSttError)
+  const deepseekOnError = useToastError(setDeepseekError)
 
   // При монтировании определяем десктоп/мобилку для CSS-классов на body
   useEffect(() => {
@@ -48,6 +59,7 @@ export default function App() {
 
   return (
     <Container className="py-5">
+      <OfflineBanner />
       {/* Заголовок страницы */}
       <div className="text-center mb-4">
         <h1>Text-to-Speech / Speech-to-Text</h1>
@@ -72,7 +84,7 @@ export default function App() {
           <TtsTab
             globalLoading={loading}
             onGlobalLoadingChange={setLoading}
-            onError={setTtsError}
+            onError={ttsOnError}
           />
           {/* Карточка с результатом синтеза — появляется при озвучивании ответа из DeepSeek */}
           {ttsAudioUrl && (
@@ -85,7 +97,7 @@ export default function App() {
           <SttTab
             globalLoading={loading}
             onGlobalLoadingChange={setLoading}
-            onError={setSttError}
+            onError={sttOnError}
             onSetRecognizedText={setRecognizedText}
           />
           {/* Карточка с распознанным текстом — появляется после получения результата */}
@@ -97,22 +109,14 @@ export default function App() {
           <DeepseekTab
             globalLoading={loading}
             onGlobalLoadingChange={setLoading}
-            onError={setDeepseekError}
+            onError={deepseekOnError}
             onSwitchToTts={handleSwitchToTtsWithAudio}
           />
         </Tab>
       </Tabs>
 
-      {/* Блоки ошибок для каждой вкладки — отображаются отдельно, не перекрывая друг друга */}
-      {ttsError && (
-        <Alert variant="danger" className="mt-3">{ttsError}</Alert>
-      )}
-      {sttError && (
-        <Alert variant="danger" className="mt-3">{sttError}</Alert>
-      )}
-      {deepseekError && (
-        <Alert variant="danger" className="mt-3">{deepseekError}</Alert>
-      )}
+      {/* Toast-уведомления — заменяют inline Alert-блоки */}
+      <ToastNotifier />
     </Container>
   )
 }

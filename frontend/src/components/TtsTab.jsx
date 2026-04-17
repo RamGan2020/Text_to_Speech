@@ -15,6 +15,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Card, Form, Button, Alert, Spinner, Row, Col } from 'react-bootstrap'
 import PodcastModePanel from './PodcastModePanel'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 
 // Доступные голоса Silero TTS — ключи должны совпадать с бэкендом (tts_service.py).
 const SPEAKERS = [
@@ -37,18 +38,23 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
   const [text, setText] = useState('')
   // Blob URL синтезированного MP3 — для аудио-плеера и скачивания
   const [audioUrl, setAudioUrl] = useState(null)
-  // Выбранный голос для синтеза
-  const [speaker, setSpeaker] = useState('kseniya')
+
+  // Настройки TTS — сохраняются в localStorage для персистентности
+  // Голос по умолчанию: kseniya
+  const [speaker, setSpeaker] = useLocalStorage('tts-speaker', 'kseniya')
   // Выбранный голос для тега [voice:] в режиме подкаста
-  const [templateVoice, setTemplateVoice] = useState('kseniya')
-  // Значение паузы для тега [pause:] (форматы: 1.5, 1.5s, 500ms)
+  const [templateVoice, setTemplateVoice] = useLocalStorage('tts-template-voice', 'kseniya')
+  // Значение паузы для тега [pause:]
   const [pauseTemplateValue, setPauseTemplateValue] = useState('1.0')
   // Опции синтеза — расстановка ударений (put_accent)
-  const [putAccent, setPutAccent] = useState(true)
+  const [putAccent, setPutAccent] = useLocalStorage('tts-put-accent', true)
   // Опции синтеза — автозамена «Е» на «Ё» в нужных позициях
-  const [putYo, setPutYo] = useState(true)
-  // Флаг режима подкаста — включает панель PodcastModePanel и передаёт podcast_mode=true
-  const [podcastMode, setPodcastMode] = useState(false)
+  const [putYo, setPutYo] = useLocalStorage('tts-put-yo', true)
+  // Флаг режима подкаста — включает панель PodcastModePanel
+  const [podcastMode, setPodcastMode] = useLocalStorage('tts-podcast-mode', false)
+
+  // Максимальная длина текста для синтеза (защита от перегрузки сервера)
+  const MAX_TEXT_LENGTH = 5000
 
   // Ref для textarea — нужен для вставки тегов в позицию курсора
   const textInputRef = useRef(null)
@@ -64,6 +70,10 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
   const handleSynthesize = async () => {
     if (!text.trim()) {
       onError?.('Введите текст для озвучивания')
+      return
+    }
+    if (text.length > MAX_TEXT_LENGTH) {
+      onError?.(`Текст слишком длинный (максимум ${MAX_TEXT_LENGTH.toLocaleString('ru-RU')} символов). Сократите текст и попробуйте снова.`)
       return
     }
     onError?.(null)            // Сброс предыдущей ошибки
@@ -176,8 +186,9 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
               style={{ resize: 'vertical', minHeight: '200px' }}
               ref={textInputRef}
             />
-            <Form.Text className="text-muted">
-              Символов: {text.length}
+            <Form.Text className={`text-muted ${text.length > MAX_TEXT_LENGTH ? 'text-danger fw-bold' : text.length > MAX_TEXT_LENGTH * 0.8 ? 'text-warning fw-bold' : ''}`}>
+              Символов: {text.length} / {MAX_TEXT_LENGTH.toLocaleString('ru-RU')}
+              {text.length > MAX_TEXT_LENGTH && ' — Превышен лимит!'}
             </Form.Text>
           </Form.Group>
 

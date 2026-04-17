@@ -4,7 +4,12 @@
       "Bash(mkdir *)",
       "Bash(pip install *)",
       "Bash(python *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(move *)",
+      "Bash(dir *)",
+      "Bash(findstr *)",
+      "Bash(npm test)"
     ]
   },
   "$version": 3

@@ -186,6 +186,31 @@ body.desktop-ui {
   background-color: #f8f9fa;
 }
 
+/* Плавные hover-эффекты карточек на десктопе */
+body.desktop-ui .card {
+  transition: box-shadow 0.25s ease, transform 0.15s ease;
+}
+
+body.desktop-ui .card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
+  transform: translateY(-1px);
+}
+
+/* Плавные hover-эффекты кнопок */
+body.desktop-ui .btn {
+  transition: all 0.2s ease;
+}
+
+body.desktop-ui .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Плавная подсветка полей ввода при фокусе */
+body.desktop-ui .form-control,
+body.desktop-ui .form-select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
 /* Плавные переходы элементов на мобильной версии */
 body.mobile-ui .card,
 body.mobile-ui .btn,

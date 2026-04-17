@@ -8,9 +8,10 @@
  * Результат распознавания передаётся через коллбэк в App,
  * который рендерит карточку SttResultCard с текстом и кнопкой копирования.
  */
-import { useRef } from 'react'
-import { Card, Form, Button, Spinner } from 'react-bootstrap'
+import { useRef, useState } from 'react'
+import { Card, Form, Button, Spinner, ProgressBar } from 'react-bootstrap'
 import { useRecording } from '../hooks/useRecording'
+import { validateAudioFile } from '../utils/fileValidation'
 
 /**
  * SttTab
@@ -23,6 +24,12 @@ import { useRecording } from '../hooks/useRecording'
 export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, onSetRecognizedText }) {
   // Ref к input[type=file] — позволяет прочитать выбранный файл и сбросить значение
   const fileInputRef = useRef(null)
+  // Выбранный файл (для отображения размера и информации)
+  const [selectedFile, setSelectedFile] = useState(null)
+  // Индикатор прогресса для долгих операций (эмуляция)
+  const [progress, setProgress] = useState(0)
+  // Показывать ли прогресс-бар
+  const [showProgress, setShowProgress] = useState(false)
 
   // Хук useRecording инкапсулирует всю логику записи микрофона:
   // запрос доступа, MediaRecorder, конвертация WebM → WAV, управление Blob URL
@@ -42,18 +49,40 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  // При выборе файла сбрасываем ошибку и предыдущий результат
-  const handleFileChange = (e) => {
+  // При выборе файла — валидация + сброс предыдущего результата
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
-    if (file) {
-      onError?.(null)
-      onSetRecognizedText?.('')
+    if (!file) {
+      setSelectedFile(null)
+      return
     }
+
+    // Определяем формат по расширению
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    const validFormats = ['mp3', 'wav', 'ogg', 'flac', 'webm']
+
+    if (!validFormats.includes(ext)) {
+      onError?.(`Неподдерживаемый формат: .${ext}. Используйте: ${validFormats.join(', ')}`)
+      setSelectedFile(null)
+      return
+    }
+
+    // Проверяем сигнатуру файла (magic bytes) и размер
+    const result = await validateAudioFile(file, ext)
+    if (!result.valid) {
+      onError?.(result.error || 'Файл не прошёл проверку')
+      setSelectedFile(null)
+      return
+    }
+
+    onError?.(null)
+    onSetRecognizedText?.('')
+    setSelectedFile(file)
   }
 
   // === Отправить файл на распознавание (/api/transcribe) ===
   const handleTranscribe = async () => {
-    const file = fileInputRef.current?.files?.[0]
+    const file = selectedFile
     if (!file) {
       onError?.('Выберите аудио-файл для распознавания')
       return
@@ -61,6 +90,18 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
 
     onGlobalLoadingChange?.(true)
     onError?.(null)
+
+    // Эмуляция прогресса: транскрипция занимает время, показываем прогресс-бар.
+    // Начинаем с 10%, постепенно поднимаем до ~80% за 30 секунд.
+    setShowProgress(true)
+    setProgress(10)
+
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        const next = prev + Math.floor(Math.random() * 5) + 1
+        return Math.min(next, 80) // Не доходить до 100% до завершения
+      })
+    }, 2000)
 
     try {
       const formData = new FormData()
@@ -70,6 +111,9 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
         method: 'POST',
         body: formData,
       })
+
+      clearInterval(progressInterval)
+      setProgress(100)
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -82,6 +126,11 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
       onError?.(err.message || 'Произошла ошибка при распознавании')
     } finally {
       onGlobalLoadingChange?.(false)
+      // Скрываем прогресс-бар с задержкой для плавного исчезновения
+      setTimeout(() => {
+        setShowProgress(false)
+        setProgress(0)
+      }, 500)
     }
   }
 
@@ -96,6 +145,15 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
 
     onGlobalLoadingChange?.(true)
     onError?.(null)
+    setShowProgress(true)
+    setProgress(10)
+
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        const next = prev + Math.floor(Math.random() * 5) + 1
+        return Math.min(next, 80)
+      })
+    }, 2000)
 
     try {
       // Получаем реальный Blob по Blob URL
@@ -109,6 +167,9 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
         body: formData,
       })
 
+      clearInterval(progressInterval)
+      setProgress(100)
+
       if (!resp.ok) {
         const errorData = await resp.json()
         throw new Error(errorData.detail || 'Ошибка распознавания')
@@ -120,6 +181,10 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
       onError?.(err.message || 'Произошла ошибка при распознавании')
     } finally {
       onGlobalLoadingChange?.(false)
+      setTimeout(() => {
+        setShowProgress(false)
+        setProgress(0)
+      }, 500)
     }
   }
 
@@ -129,6 +194,9 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
     onSetRecognizedText?.('')
     onError?.(null)
     resetRecording()
+    setSelectedFile(null)
+    setShowProgress(false)
+    setProgress(0)
   }
 
   return (
@@ -147,7 +215,32 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
             <Form.Text className="text-muted">
               Поддерживаются форматы: MP3, WAV, OGG, FLAC, WEBM
             </Form.Text>
+
+            {/* Информация о выбранном файле (имя + размер) */}
+            {selectedFile && (
+              <div className="mt-2 p-2 bg-light rounded">
+                <strong>📄 {selectedFile.name}</strong>
+                <span className="text-muted ms-2">
+                  ({(selectedFile.size / 1024).toFixed(1)} КБ)
+                </span>
+              </div>
+            )}
           </Form.Group>
+
+          {/* Прогресс-бар для долгих операций */}
+          {showProgress && (
+            <div className="mb-3">
+              <ProgressBar
+                now={progress}
+                label={`${progress}%`}
+                animated={!globalLoading}
+                className="mb-1"
+              />
+              <small className="text-muted">
+                Распознавание может занять до нескольких минут...
+              </small>
+            </div>
+          )}
 
           {/* Зона записи с микрофона */}
           <Form.Group className="mb-3">
@@ -223,7 +316,7 @@ export default function SttTab({ globalLoading, onGlobalLoadingChange, onError, 
           {/* Кнопки действий */}
           <div className="d-grid gap-2">
             {/* «Распознать файл» — показана только если файл выбран */}
-            {fileInputRef.current?.files?.[0] && (
+            {selectedFile && (
               <Button
                 variant="primary"
                 onClick={handleTranscribe}

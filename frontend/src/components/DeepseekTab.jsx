@@ -11,6 +11,7 @@
  */
 import { useState } from 'react'
 import { Card, Form, Button, Spinner, Row, Col } from 'react-bootstrap'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 
 // Доступные модели DeepSeek API
 const DEEPSEEK_MODELS = [
@@ -58,16 +59,16 @@ export default function DeepseekTab({
   const [apiKey, setApiKey] = useState('')
   // Текст вопроса
   const [question, setQuestion] = useState('')
-  // Выбранный системный промпт (роль ассистента)
-  const [systemPrompt, setSystemPrompt] = useState('')
   // Текст ответа от DeepSeek — отображается в textarea для чтения/копирования
   const [answer, setAnswer] = useState('')
   // Локальный флаг загрузки для запроса к DeepSeek (не блокирует остальной интерфейс)
   const [loading, setLoading] = useState(false)
   // Локальная ошибка (не пересекается с onError — это для UI-сообщений компонента)
   const [error, setLocalError] = useState(null)
-  // Выбранная модель DeepSeek
-  const [model, setModel] = useState('deepseek-chat')
+  // Модель DeepSeek — сохраняется в localStorage для персистентности
+  const [model, setModel] = useLocalStorage('ds-model', 'deepseek-chat')
+  // Системный промпт — сохраняется в localStorage (выбранная роль ассистента)
+  const [systemPrompt, setSystemPrompt] = useLocalStorage('ds-system-prompt', '')
 
   // Блокировка кнопки «Озвучить ответ» — учитывает как локальную, так и глобальную загрузку
   const isLoading = loading || globalLoading
