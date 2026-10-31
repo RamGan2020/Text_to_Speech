@@ -1,4 +1,4 @@
-# tts_service.py — Сервис для работы с моделью Silero TTS v4
+# tts_service.py — Сервис для работы с моделью Silero TTS v5
 # Этот файл содержит класс SileroTTSService, который загружает модель,
 # разбивает текст на чанки и синтезирует речь в MP3-файл.
 # Поддерживает режим "Подкаст" с тегами [voice:name] и [pause:time].
@@ -12,9 +12,13 @@ from io import BytesIO  # Класс для работы с байтовыми �
 from typing import List, Dict, Any  # Типы для аннотаций
 import os  # Модуль для работы с ОС (удаление временных файлов)
 
+# Версия русской модели Silero. v5_6_ru — последняя: различает интонацию
+# вопросов, восклицаний и эмфазы. Набор голосов тот же, что в v4_ru.
+SILERO_MODEL_ID = 'v5_6_ru'
+
 
 class SileroTTSService:
-    """Сервис для синтеза речи с использованием модели Silero TTS v4"""
+    """Сервис для синтеза речи с использованием модели Silero TTS v5"""
 
     def __init__(self):
         """Инициализация сервиса: установка устройства, обнуление модели, загрузка"""
@@ -24,16 +28,21 @@ class SileroTTSService:
         self._load_model()  # Загружаем модель при инициализации сервиса
 
     def _load_model(self):
-        """Загрузка модели Silero TTS v4 из torch.hub"""
-        print("Загрузка модели Silero TTS v4 (kseniya)...")  # Выводим сообщение о начале загрузки
+        """Загрузка модели Silero TTS v5 из torch.hub"""
+        print(f"Загрузка модели Silero TTS {SILERO_MODEL_ID} (kseniya)...")  # Выводим сообщение о начале загрузки
         # Загружаем модель из репозитория snakers4/silero-models с сайта GitHub
-        # language='ru' — русский язык, speaker='v4_ru' — версия модели v4 для русского
-        result = torch.hub.load(
-            repo_or_dir='snakers4/silero-models',  # Репозиторий с моделя Silero
+        # language='ru' — русский язык, speaker=SILERO_MODEL_ID — версия модели для русского
+        hub_args = dict(
+            repo_or_dir='snakers4/silero-models',  # Репозиторий с моделями Silero
             model='silero_tts',                    # Название модели (TTS)
             language='ru',                         # Язык — русский
-            speaker='v4_ru'                        # Версия модели — v4 для русского языка
+            speaker=SILERO_MODEL_ID                # Версия модели — v5_6_ru для русского языка
         )
+        try:
+            result = torch.hub.load(**hub_args)
+        except AssertionError:
+            # В старом кэше ~/.cache/torch/hub ещё нет v5_6_ru — обновляем копию репозитория
+            result = torch.hub.load(**hub_args, force_reload=True)
         # torch.hub.load может вернуть кортеж (модель, доп.данные) или саму модель
         if isinstance(result, tuple):  # Если результат — кортеж
             self.model = result[0]     # Берём первый элемент (это сама модель)
@@ -42,7 +51,7 @@ class SileroTTSService:
         self.model.to(self.device)     # Перемещаем модель на устройство (CPU)
         self.sample_rate = 48000       # Устанавливаем частоту дискретизации 48 кГц
         self.speaker = 'kseniya'       # Голос по умолчанию
-        print("Модель v4 загружена")   # Выводим сообщение об успешной загрузке
+        print("Модель v5_6_ru загружена")   # Выводим сообщение об успешной загрузке
 
     def _generate_silence(self, duration_ms: int) -> torch.Tensor:
         """Генерация тишины заданной длительности

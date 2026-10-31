@@ -23,6 +23,7 @@ yarn-error.log*
 
 # Сборка Vite
 frontend/dist/
+frontend/node_modules/
 
 # === IDE ===
 .vscode/
