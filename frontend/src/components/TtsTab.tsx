@@ -195,6 +195,9 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
               Символов: {text.length} / {MAX_TEXT_LENGTH.toLocaleString('ru-RU')}
               {text.length > MAX_TEXT_LENGTH && ' — Превышен лимит!'}
             </Form.Text>
+            <Form.Text className="text-muted d-block">
+              Ударение: <code>вод[!]а</code> — знак ставится перед ударной гласной
+            </Form.Text>
           </Form.Group>
 
           {/* Настройки: голос (слева) и переключатели (справа) */}
