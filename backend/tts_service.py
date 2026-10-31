@@ -11,10 +11,26 @@ import re  # Модуль для работы с регулярными выра
 from io import BytesIO  # Класс для работы с байтовыми потоками в памяти (без файлов на диске)
 from typing import List, Dict, Any  # Типы для аннотаций
 import os  # Модуль для работы с ОС (удаление временных файлов)
+from text_normalization import normalize_for_tts, normalize_numbers, split_by_language
 
 # Версия русской модели Silero. v5_6_ru — последняя: различает интонацию
 # вопросов, восклицаний и эмфазы. Набор голосов тот же, что в v4_ru.
 SILERO_MODEL_ID = 'v5_6_ru'
+
+# Английская модель — для англоязычных фраз внутри русского текста
+ENGLISH_MODEL_ID = 'v3_en'
+
+# Английский голос под каждого русского диктора: подобран по высоте тона,
+# чтобы при смене языка тембр оставался похожим. Файлы для прослушивания —
+# .qwen/tmp/audition/<русский голос>__<английский голос>.mp3
+ENGLISH_VOICE_BY_SPEAKER = {
+    'kseniya': 'en_11',
+    'xenia': 'en_41',
+    'baya': 'en_95',
+    'aidar': 'en_89',
+    'eugene': 'en_106',
+}
+LANGUAGE_SWITCH_PAUSE_MS = 120  # Пауза на стыке языков, смягчает смену тембра
 
 
 class SileroTTSService:
@@ -24,6 +40,7 @@ class SileroTTSService:
         """Инициализация сервиса: установка устройства, обнуление модели, загрузка"""
         self.device = torch.device('cpu')  # Указываем устройство — CPU (можно заменить на 'cuda' для GPU)
         self.model = None  # Пока модель не загружена — будет None
+        self.english_model = None  # Английская модель грузится по требованию
         self.sample_rate = 48000  # Частота дискретизации аудио (48 кГц — высокое качество)
         self._load_model()  # Загружаем модель при инициализации сервиса
 
@@ -52,6 +69,27 @@ class SileroTTSService:
         self.sample_rate = 48000       # Устанавливаем частоту дискретизации 48 кГц
         self.speaker = 'kseniya'       # Голос по умолчанию
         print("Модель v5_6_ru загружена")   # Выводим сообщение об успешной загрузке
+
+    def _get_english_model(self):
+        """Английская модель Silero — загружается при первом английском фрагменте
+
+        Нужна потому, что в русском алфавите нет английских звуков.
+        Голос берётся из ENGLISH_VOICE_BY_SPEAKER, чтобы тембр совпадал
+        с выбранным русским диктором.
+        """
+        if self.english_model is None:
+            print(f"Загрузка английской модели Silero TTS {ENGLISH_MODEL_ID}...")
+            result = torch.hub.load(
+                repo_or_dir='snakers4/silero-models',
+                model='silero_tts',
+                language='en',
+                speaker=ENGLISH_MODEL_ID
+            )
+            # torch.hub.load возвращает кортеж (модель, пример) или саму модель
+            self.english_model = result[0] if isinstance(result, tuple) else result
+            self.english_model.to(self.device)
+            print("Английская модель загружена")
+        return self.english_model
 
     def _generate_silence(self, duration_ms: int) -> torch.Tensor:
         """Генерация тишины заданной длительности
@@ -160,15 +198,18 @@ class SileroTTSService:
 
         return chunks  # Возвращаем список чанков
 
-    def synthesize(self, text: str, speaker: str = 'kseniya', put_accent: bool = True, put_yo: bool = True, podcast_mode: bool = False) -> BytesIO:
+    def synthesize(self, text: str, speaker: str = 'kseniya', put_accent: bool = True, put_yo: bool = True, podcast_mode: bool = False, english_mode: str = 'voice') -> BytesIO:
         """Синтез речи из текста — возвращает MP3-файл в виде BytesIO
-        
+
         Args:
             text: Текст для озвучивания (или сценарий подкаста)
             speaker: Голос по умолчанию (для обычного режима)
             put_accent: Расстановка ударений
             put_yo: Замена 'е' на 'ё'
             podcast_mode: Если True, парсить теги [voice] и [pause]
+            english_mode: 'voice' — английские фразы читает v3_en голосом,
+                подобранным под диктора; 'transliterate' — тот же диктор,
+                латиница записывается кириллицей
         """
         
         # Если режим подкаста — парсим сценарий
@@ -199,21 +240,49 @@ class SileroTTSService:
                     print(f"Неизвестный голос '{voice}', используем {speaker}")
                     voice = speaker
 
-                print(f"Генерация речи (голос: {voice}): {segment['text'][:50]}...")
-                
-                # Разбиваем текст сегмента на чанки, если он длинный
-                text_chunks = self._split_text(segment['text'])
-                
-                for chunk_text in text_chunks:
-                    # Вызываем метод модели для синтеза аудио из текста чанка
-                    audio = self.model.apply_tts(
-                        text=chunk_text,            # Текст чанка для озвучивания
-                        speaker=voice,              # Выбранный голос
-                        sample_rate=self.sample_rate,  # Частота дискретизации (48000 Гц)
-                        put_accent=put_accent,      # Флаг расстановки ударений
-                        put_yo=put_yo               # Флаг замены 'е' на 'ё'
-                    )
-                    all_audio.append(audio)
+                # Модель вырезает всё вне своего алфавита, поэтому текст делим
+                # по языкам: русские куски — транслитерация и числа словами,
+                # английские фразы — английская модель с голосом под этого диктора
+                previous_language = None
+                english_voice = ENGLISH_VOICE_BY_SPEAKER.get(voice, 'en_11')
+
+                # В режиме транслитерации английские слова читает тот же диктор,
+                # в режиме voice — отдельная модель с подобранным голосом
+                pieces = ([('ru', segment['text'])] if english_mode == 'transliterate'
+                          else split_by_language(segment['text']))
+
+                for language, piece in pieces:
+                    if language == 'en':
+                        model = self._get_english_model()
+                        piece_text = normalize_numbers(piece, lang='en').strip()
+                        piece_voice = english_voice
+                    else:
+                        model = self.model
+                        piece_text = normalize_for_tts(piece).strip()
+                        piece_voice = voice
+
+                    # Пунктуация без букв и цифр роняет модель Silero — пропускаем
+                    if not piece_text or not any(char.isalnum() for char in piece_text):
+                        continue
+
+                    # Смена языка посреди фразы звучит резко — сглаживаем паузой
+                    if previous_language is not None and language != previous_language:
+                        all_audio.append(self._generate_silence(LANGUAGE_SWITCH_PAUSE_MS))
+                    previous_language = language
+
+                    print(f"Генерация речи (голос: {piece_voice}): {piece_text[:50]}...")
+
+                    # Разбиваем кусок на чанки, если он длинный
+                    for chunk_text in self._split_text(piece_text):
+                        # Вызываем метод модели для синтеза аудио из текста чанка
+                        audio = model.apply_tts(
+                            text=chunk_text,            # Текст чанка для озвучивания
+                            speaker=piece_voice,        # Голос под выбранного диктора
+                            sample_rate=self.sample_rate,  # Частота дискретизации (48000 Гц)
+                            put_accent=put_accent,      # Флаг расстановки ударений
+                            put_yo=put_yo               # Флаг замены 'е' на 'ё'
+                        )
+                        all_audio.append(audio)
 
         # Конкатенация всех аудио-тензоров в один
         if len(all_audio) == 1:        # Если чанк был один

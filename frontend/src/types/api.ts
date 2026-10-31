@@ -2,12 +2,18 @@
 
 export type Speaker = 'kseniya' | 'xenia' | 'baya' | 'aidar' | 'eugene';
 
+/** Способ произношения английских слов:
+ *  voice — отдельная английская модель голосом, подобранным под диктора;
+ *  transliterate — тот же диктор, латиница записывается кириллицей. */
+export type EnglishMode = 'voice' | 'transliterate';
+
 export interface SynthesizeRequest {
   text: string;
   speaker: Speaker;
   put_accent: boolean;
   put_yo: boolean;
   podcast_mode: boolean;
+  english_mode: EnglishMode;
 }
 
 export interface SynthesizeResponse {

@@ -81,6 +81,7 @@ npm run dev
 - **Frontend:** React 18, Vite, TypeScript 5.3, React Bootstrap
 - **Backend:** FastAPI, uvicorn
 - **TTS Model:** Silero TTS v5 (`v5_6_ru`, PyTorch)
+- **EN TTS Model:** Silero TTS v3 (`v3_en`) — английские фразы голосом, подобранным под диктора
 - **STT Model:** OpenAI Whisper (HuggingFace)
 - **AI Model:** DeepSeek API
 - **PWA:** ServiceWorker + Manifest

@@ -6,6 +6,8 @@
  *   2. Выбрать один из пяти голосов Silero (kseniya, xenia, baya, aidar, eugene).
  *   3. Включить режим подкаста — использовать теги [voice:] и [pause:]
  *      для создания многоголосых сценариев.
+ *   4. Выбрать, как читать английские слова — английским голосом,
+ *      подобранным под диктора, или тем же голосом (транслитерация).
  *
  * Стейт-управление:
  *   - Собственное состояние: текст, голос, настройки, локальный audioUrl.
@@ -16,7 +18,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Card, Form, Button, Alert, Spinner, Row, Col } from 'react-bootstrap'
 import PodcastModePanel from './PodcastModePanel'
 import { useLocalStorage } from '../hooks/useLocalStorage'
-import type { Speaker, SpeakerOption } from '../types/api'
+import type { EnglishMode, Speaker, SpeakerOption } from '../types/api'
 
 // Доступные голоса Silero TTS — ключи должны совпадать с бэкендом (tts_service.py).
 const SPEAKERS: SpeakerOption[] = [
@@ -52,6 +54,8 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
   const [putYo, setPutYo] = useLocalStorage<boolean>('tts-put-yo', true)
   // Флаг режима подкаста — включает панель PodcastModePanel
   const [podcastMode, setPodcastMode] = useLocalStorage<boolean>('tts-podcast-mode', false)
+  // Способ произношения английских слов: английский голос или транслитерация
+  const [englishMode, setEnglishMode] = useLocalStorage<EnglishMode>('tts-english-mode', 'voice')
 
   // Максимальная длина текста для синтеза (защита от перегрузки сервера)
   const MAX_TEXT_LENGTH = 5000
@@ -90,6 +94,7 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
           put_accent: putAccent,
           put_yo: putYo,
           podcast_mode: podcastMode,
+          english_mode: englishMode,
         }),
       })
 
@@ -195,13 +200,28 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
           {/* Настройки: голос (слева) и переключатели (справа) */}
           <Row className="mb-3">
             <Col xs={12} md={6}>
-              <Form.Group>
+              <Form.Group className="mb-3">
                 <Form.Label>Голос</Form.Label>
                 <Form.Select value={speaker} onChange={(e) => setSpeaker(e.target.value as Speaker)}>
                   {SPEAKERS.map((s) => (
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </Form.Select>
+              </Form.Group>
+              <Form.Group>
+                <Form.Label>Английские слова</Form.Label>
+                <Form.Select
+                  value={englishMode}
+                  onChange={(e) => setEnglishMode(e.target.value as EnglishMode)}
+                >
+                  <option value="voice">Английским голосом (подобран под диктора)</option>
+                  <option value="transliterate">Тем же голосом (транслитерация)</option>
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  {englishMode === 'voice'
+                    ? 'Естественное произношение, но тембр может немного отличаться.'
+                    : 'Диктор не меняется, но английские слова звучат с акцентом.'}
+                </Form.Text>
               </Form.Group>
             </Col>
             <Col xs={12} md={6}>

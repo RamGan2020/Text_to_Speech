@@ -11,7 +11,7 @@ from tts_service import get_tts_service  # Функция получения э�
 from stt_service import get_stt_service  # Функция получения экземпляра STT-сервиса (singleton)
 from deepseek_service import get_deepseek_service  # Функция получения экземпляра DeepSeek-сервиса
 import io  # Модуль для работы с потоками в памяти (BytesIO)
-from typing import Optional  # Тип Optional для аннотаций
+from typing import Literal, Optional  # Тип Optional для аннотаций, Literal — для перечислений
 
 # Создаём экземпляр FastAPI-приложения с названием и версией
 app = FastAPI(title="Text-to-Speech / Speech-to-Text API", version="1.0.0")
@@ -35,6 +35,7 @@ class SynthesizeRequest(BaseModel):
     put_accent: bool = True    # Расставлять ли ударения по умолчанию
     put_yo: bool = True        # Заменять ли 'е' на 'ё' где нужно по умолчанию
     podcast_mode: bool = False # Режим подкаста (парсинг тегов [voice] и [pause])
+    english_mode: Literal['voice', 'transliterate'] = 'voice'  # Английские слова: английский голос или транслитерация
 
 
 # Класс-модель для валидации тела POST-запроса к DeepSeek
@@ -69,7 +70,8 @@ async def synthesize(request: SynthesizeRequest):
             speaker=request.speaker,    # Выбранный голос
             put_accent=request.put_accent,  # Флаг расстановки ударений
             put_yo=request.put_yo,       # Флаг расстановки буквы 'ё'
-            podcast_mode=request.podcast_mode  # Режим подкаста (теги)
+            podcast_mode=request.podcast_mode,  # Режим подкаста (теги)
+            english_mode=request.english_mode   # Способ произношения английских слов
         )
 
         # Возвращаем MP3-файл как streaming response — браузер скачивает файл
