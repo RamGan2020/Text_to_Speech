@@ -11,6 +11,8 @@ import re  # Модуль для работы с регулярными выра
 from io import BytesIO  # Класс для работы с байтовыми потоками в памяти (без файлов на диске)
 from typing import List, Dict, Any  # Типы для аннотаций
 import os  # Модуль для работы с ОС (удаление временных файлов)
+import tempfile  # Уникальные временные файлы для MP3 (защита от гонок при параллельных запросах)
+import threading  # Блокировка инференса — модель обслуживает один запрос за раз
 from text_normalization import (
     has_ssml,
     normalize_for_tts,
@@ -37,6 +39,10 @@ ENGLISH_VOICE_BY_SPEAKER = {
     'eugene': 'en_106',
 }
 LANGUAGE_SWITCH_PAUSE_MS = 120  # Пауза на стыке языков, смягчает смену тембра
+
+# Глобальная блокировка инференса: модель Silero не потокобезопасна, а CPU при
+# синтезе и так загружен полностью — параллельные запросы встают в очередь
+_inference_lock = threading.Lock()
 
 
 class SileroTTSService:
@@ -217,7 +223,12 @@ class SileroTTSService:
                 подобранным под диктора; 'transliterate' — тот же диктор,
                 латиница записывается кириллицей
         """
-        
+        # Параллельные запросы обслуживаются по одному — ждут освобождения блокировки
+        with _inference_lock:
+            return self._synthesize(text, speaker, put_accent, put_yo, podcast_mode, english_mode)
+
+    def _synthesize(self, text: str, speaker: str, put_accent: bool, put_yo: bool, podcast_mode: bool, english_mode: str) -> BytesIO:
+        """Реализация синтеза — вызывается из synthesize() под блокировкой."""
         # Если режим подкаста — парсим сценарий
         if podcast_mode:
             segments = self._parse_podcast_script(text)
@@ -323,19 +334,24 @@ class SileroTTSService:
         audio_tensor = combined_audio.unsqueeze(0)  # Добавляем ось каналов [samples] -> [1, samples]
 
         # Сохраняем как MP3 используя torchaudio — во временный файл на диске
-        temp_mp3 = "temp_output.mp3"  # Имя временного файла
-        torchaudio.save(
-            temp_mp3,                 # Путь к файлу
-            audio_tensor,             # Аудио-тензор [1, samples]
-            self.sample_rate,         # Частота дискретизации
-            format="mp3"              # Формат — MP3
-        )
+        # Имя уникально (NamedTemporaryFile): фиксированное имя при параллельных
+        # запросах приводило бы к тому, что запросы затирают файл друг друга
+        tmp = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+        temp_mp3 = tmp.name  # Путь к уникальному временному файлу
+        tmp.close()
+        try:
+            torchaudio.save(
+                temp_mp3,                 # Путь к файлу
+                audio_tensor,             # Аудио-тензор [1, samples]
+                self.sample_rate,         # Частота дискретизации
+                format="mp3"              # Формат — MP3
+            )
 
-        # Читаем MP3-файл обратно в BytesIO-буфер
-        with open(temp_mp3, 'rb') as f:  # Открываем временный файл для чтения
-            mp3_buffer.write(f.read())   # Читаем всё содержимое в буфер
-
-        os.remove(temp_mp3)  # Удаляем временный MP3-файл с диска
+            # Читаем MP3-файл обратно в BytesIO-буфер
+            with open(temp_mp3, 'rb') as f:  # Открываем временный файл для чтения
+                mp3_buffer.write(f.read())   # Читаем всё содержимое в буфер
+        finally:
+            os.remove(temp_mp3)  # Удаляем временный MP3-файл с диска в любом случае
 
         mp3_buffer.seek(0)  # Возвращаем указатель буфера в начало
         return mp3_buffer   # Возвращаем буфер с MP3

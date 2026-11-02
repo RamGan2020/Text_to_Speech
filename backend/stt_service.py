@@ -4,12 +4,17 @@
 # Конвертация аудио происходит через librosa (без зависимости от ffmpeg).
 
 import os  # Модуль для работы с операционной системой (удаление временных файлов)
+import threading  # Блокировка инференса — Whisper обслуживает один запрос за раз
 import io  # Модуль для работы с байтовыми потоками
 import tempfile  # Модуль для работы с временными файлами (сохранение аудио для librosa)
 import numpy as np  # Библиотека для работы с числовыми массивами (аудио-данные)
 import soundfile as sf  # Библиотека для чтения/записи аудиофайлов
 import librosa  # Библиотека для загрузки и ресемплинга аудио
 import whisper  # Библиотека OpenAI Whisper для распознавания речи
+
+# Глобальная блокировка инференса: параллельные транскрибации встают в очередь,
+# иначе несколько запросов дерутся за CPU и память одновременно
+_inference_lock = threading.Lock()
 
 
 class STTService:
@@ -85,15 +90,17 @@ class STTService:
             # Конвертируем в float32 — требование Whisper (не float64)
             data = data.astype(np.float32)
 
-            # Вызываем метод распознавания Whisper с numpy массивом
+            # Вызываем метод распознавания Whisper с numpy массивом под блокировкой —
+            # параллельные транскрибации ждут очереди, не конкурируя за CPU и память
             # audio=data — передаём аудио напрямую, без файла
             # language="ru" — принудительно распознавать русский язык
             # fp16=False — не использовать полуточную точность (не поддерживается на CPU)
-            result = self.model.transcribe(
-                data,                   # numpy массив аудио (16kHz, mono, float32)
-                language=self.language,  # Язык — русский
-                fp16=False              # Отключаем fp16 для CPU
-            )
+            with _inference_lock:
+                result = self.model.transcribe(
+                    data,                   # numpy массив аудио (16kHz, mono, float32)
+                    language=self.language,  # Язык — русский
+                    fp16=False              # Отключаем fp16 для CPU
+                )
             # result — словарь с ключами:
             #   "text" — распознанный текст
             #   "segments" — сегменты с таймкодами

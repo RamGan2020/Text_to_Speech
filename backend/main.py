@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware  # Middleware для CORS (р
 from fastapi.responses import StreamingResponse  # Ответ-поток для отправки больших файлов без загрузки в память
 from pydantic import BaseModel  # Библиотека для валидации и типизации данных запросов
 from fastapi import UploadFile, File  # Импортируем для загрузки файлов через multipart/form-data
+from fastapi.concurrency import run_in_threadpool  # Запуск блокирующих вызовов в пуле потоков (не блокируя event loop)
 from tts_service import get_tts_service  # Функция получения экземпляра TTS-сервиса (singleton)
 from stt_service import get_stt_service  # Функция получения экземпляра STT-сервиса (singleton)
 from deepseek_service import get_deepseek_service  # Функция получения экземпляра DeepSeek-сервиса
@@ -64,8 +65,10 @@ async def synthesize(request: SynthesizeRequest):
     try:
         # Получаем экземпляр TTS-сервиса (singleton — модель Silero загружается один раз)
         tts_service = get_tts_service()
-        # Вызываем метод синтеза — передаём текст и настройки голоса
-        mp3_file = tts_service.synthesize(
+        # Вызываем метод синтеза в пуле потоков — блокирующий инференс
+        # не останавливает event loop (остальные запросы продолжают отвечать)
+        mp3_file = await run_in_threadpool(
+            tts_service.synthesize,
             text=request.text,          # Текст для озвучивания
             speaker=request.speaker,    # Выбранный голос
             put_accent=request.put_accent,  # Флаг расстановки ударений
@@ -114,8 +117,9 @@ async def transcribe(audio: UploadFile = File(...)):
         stt_service = get_stt_service()
         # Определяем формат по расширению файла
         file_format = filename_lower.split('.')[-1]
-        # Вызываем метод распознавания — получаем текст
-        text = stt_service.transcribe(audio_bytes, file_format=file_format)
+        # Вызываем метод распознавания в пуле потоков — долгий инференс Whisper
+        # не блокирует event loop (health и другие запросы продолжают отвечать)
+        text = await run_in_threadpool(stt_service.transcribe, audio_bytes, file_format=file_format)
 
         # Возвращаем JSON с распознанным текстом и именем файла
         return {"text": text, "filename": audio.filename}
@@ -146,8 +150,10 @@ async def ask_deepseek(request: DeepSeekRequest):
         # Получаем экземпляр DeepSeek-сервиса (передаём ключ, если указан)
         deepseek_service = get_deepseek_service(api_key=request.api_key)
 
-        # Отправляем запрос в DeepSeek
-        answer = deepseek_service.ask(
+        # Отправляем запрос в DeepSeek — синхронный HTTP-клиент вынесен в пул
+        # потоков, чтобы ожидание ответа API не блокировало event loop
+        answer = await run_in_threadpool(
+            deepseek_service.ask,
             question=request.question,
             system_prompt=request.system_prompt,
             model=request.model,
