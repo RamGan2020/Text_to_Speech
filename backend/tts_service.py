@@ -11,7 +11,13 @@ import re  # Модуль для работы с регулярными выра
 from io import BytesIO  # Класс для работы с байтовыми потоками в памяти (без файлов на диске)
 from typing import List, Dict, Any  # Типы для аннотаций
 import os  # Модуль для работы с ОС (удаление временных файлов)
-from text_normalization import normalize_for_tts, normalize_numbers, split_by_language
+from text_normalization import (
+    has_ssml,
+    normalize_for_tts,
+    normalize_numbers,
+    split_by_language,
+    wrap_ssml,
+)
 
 # Версия русской модели Silero. v5_6_ru — последняя: различает интонацию
 # вопросов, восклицаний и эмфазы. Набор голосов тот же, что в v4_ru.
@@ -246,10 +252,14 @@ class SileroTTSService:
                 previous_language = None
                 english_voice = ENGLISH_VOICE_BY_SPEAKER.get(voice, 'en_11')
 
-                # В режиме транслитерации английские слова читает тот же диктор,
-                # в режиме voice — отдельная модель с подобранным голосом
-                pieces = ([('ru', segment['text'])] if english_mode == 'transliterate'
-                          else split_by_language(segment['text']))
+                # SSML разбирает сама модель и только для русского голоса,
+                # поэтому такой сегмент не делим по языкам
+                if has_ssml(segment['text']):
+                    pieces = [('ru', segment['text'])]
+                elif english_mode == 'transliterate':
+                    pieces = [('ru', segment['text'])]
+                else:
+                    pieces = split_by_language(segment['text'])
 
                 for language, piece in pieces:
                     if language == 'en':
@@ -271,6 +281,19 @@ class SileroTTSService:
                     previous_language = language
 
                     print(f"Генерация речи (голос: {piece_voice}): {piece_text[:50]}...")
+
+                    # SSML нельзя резать на чанки: тег может разорваться между
+                    # кусками, и XML станет невалидным. Модель принимает
+                    # разметку отдельным параметром ssml_text
+                    if has_ssml(piece_text):
+                        all_audio.append(model.apply_tts(
+                            ssml_text=wrap_ssml(piece_text),  # Разметка целиком
+                            speaker=piece_voice,
+                            sample_rate=self.sample_rate,
+                            put_accent=put_accent,
+                            put_yo=put_yo
+                        ))
+                        continue
 
                     # Разбиваем кусок на чанки, если он длинный
                     for chunk_text in self._split_text(piece_text):

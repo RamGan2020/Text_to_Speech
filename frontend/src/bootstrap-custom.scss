@@ -6,7 +6,6 @@
  * используются в приложении.
  *
  * Экономия: исключаются компоненты, которые не используются:
- *   - modal (модальные окна — не используем)
  *   - dropdown (выпадающие списки — не используем)
  *   - carousel (слайдер)
  *   - offcanvas
@@ -15,7 +14,6 @@
  *   - list-group
  *   - breadcrumb
  *   - pagination
- *   - table
  */
 
 // === Ядро Bootstrap ===
@@ -43,6 +41,9 @@
 @import "bootstrap/scss/alert";      // .alert (оффлайн-баннер)
 @import "bootstrap/scss/badge";      // .badge (индикатор записи)
 @import "bootstrap/scss/close";      // Кнопка закрытия
+@import "bootstrap/scss/tables";    // .table (справка по SSML)
+@import "bootstrap/scss/transitions"; // .fade (плавное появление модального окна)
+@import "bootstrap/scss/modal";      // .modal, .modal-dialog, .modal-backdrop
 
 // === Утилиты (все — они небольшие, ~10 КБ) ===
 @import "bootstrap/scss/utilities/api";

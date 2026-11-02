@@ -17,6 +17,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Card, Form, Button, Alert, Spinner, Row, Col } from 'react-bootstrap'
 import PodcastModePanel from './PodcastModePanel'
+import SsmlHelpModal from './SsmlHelpModal'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import type { EnglishMode, Speaker, SpeakerOption } from '../types/api'
 
@@ -56,6 +57,8 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
   const [podcastMode, setPodcastMode] = useLocalStorage<boolean>('tts-podcast-mode', false)
   // Способ произношения английских слов: английский голос или транслитерация
   const [englishMode, setEnglishMode] = useLocalStorage<EnglishMode>('tts-english-mode', 'voice')
+  // Модальное окно со справкой по SSML
+  const [showSsmlHelp, setShowSsmlHelp] = useState(false)
 
   // Максимальная длина текста для синтеза (защита от перегрузки сервера)
   const MAX_TEXT_LENGTH = 5000
@@ -198,6 +201,18 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
             <Form.Text className="text-muted d-block">
               Ударение: <code>вод[!]а</code> — знак ставится перед ударной гласной
             </Form.Text>
+            <Form.Text className="text-muted d-block">
+              SSML: <code>{'<break time="1s"/>'}</code>,{' '}
+              <code>{'<prosody rate="x-slow">…</prosody>'}</code>{' '}
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 align-baseline"
+                onClick={() => setShowSsmlHelp(true)}
+              >
+                все возможности
+              </Button>
+            </Form.Text>
           </Form.Group>
 
           {/* Настройки: голос (слева) и переключатели (справа) */}
@@ -321,6 +336,15 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
           </Card.Body>
         </Card>
       )}
+      {/* Модальное окно со всеми значениями SSML */}
+      <SsmlHelpModal
+        show={showSsmlHelp}
+        onHide={() => setShowSsmlHelp(false)}
+        onInsert={(snippet) => {
+          insertIntoTextAtCursor(snippet)
+          onError?.(null)
+        }}
+      />
     </>
   )
 }

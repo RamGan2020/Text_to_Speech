@@ -197,12 +197,12 @@ _ACCUSATIVE_FEMININE_RE = re.compile(rf'\b({_ACCUSATIVE_VERBS})\s+одна це�
 # Математические знаки: в алфавите модели их нет (кроме «+», который
 # вообще означает ударение), поэтому заменяем словами
 _SYMBOLS = {
-    '+': 'плюс',
+    #'+': 'плюс',
     '=': 'равно',
-    '*': 'умножить на',
-    '×': 'умножить на',
-    '/': 'разделить на',
-    '\\': 'разделить на',
+    #'*': 'умножить на',
+    #'×': 'умножить на',
+    #'/': 'разделить на',
+    #'\\': 'разделить на',
     '÷': 'разделить на',
     '−': 'минус',
     '^': 'в степени',
@@ -210,12 +210,53 @@ _SYMBOLS = {
     '≈': 'примерно равно',
     '≠': 'не равно',
 }
+
 # Признаки того, что дефис в тексте — это минус, а не диапазон
 _MATH_CONTEXT_RE = re.compile(r'[=+*^]|[×÷±≈≠]')
 
 # Ручное ударение: «вод[!]а» → «вод+а». Маркер Silero — «+» перед гласной,
 # он работает и при включённой автоматической расстановке ударений
 _MANUAL_STRESS_RE = re.compile(r'\[!\]')
+
+# SSML-теги (<break time="1s"/>, <prosody rate="slow">…) модель разбирает сама,
+# поэтому их нельзя транслитерировать и трогать числа внутри атрибутов
+_SSML_TAG_RE = re.compile(r'</?[A-Za-z][^<>]*>')
+# Начало области приватного использования Unicode — для временных заглушек
+_TAG_PLACEHOLDER_BASE = 0xE000
+
+
+def has_ssml(text: str) -> bool:
+    """Есть ли в тексте SSML-разметка"""
+    return _SSML_TAG_RE.search(text) is not None
+
+
+def wrap_ssml(text: str) -> str:
+    """Оборачивает разметку в <speak>: иначе Silero падает с Invalid XML format.
+
+    Попутно экранирует одиночные «&», которые ломают XML-парсер.
+    """
+    text = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)', '&amp;', text)
+    if not text.lstrip().lower().startswith('<speak'):
+        text = f'<speak>{text}</speak>'
+    return text
+
+
+def _protect_ssml_tags(text: str) -> Tuple[str, List[str]]:
+    """Прячет теги за символами приватной области Unicode — нормализация их не тронет"""
+    tags: List[str] = []
+
+    def replace(match: re.Match) -> str:
+        tags.append(match.group(0))
+        return chr(_TAG_PLACEHOLDER_BASE + len(tags) - 1)
+
+    return _SSML_TAG_RE.sub(replace, text), tags
+
+
+def _restore_ssml_tags(text: str, tags: List[str]) -> str:
+    """Возвращает теги на место после нормализации"""
+    for index, tag in enumerate(tags):
+        text = text.replace(chr(_TAG_PLACEHOLDER_BASE + index), tag)
+    return text
 
 
 def _normalize_symbols(text: str) -> str:
@@ -256,6 +297,8 @@ def normalize_for_tts(text: str) -> str:
     Returns:
         str: Текст, который модель сможет произнести
     """
+    # SSML-теги прячем: их разбирает сама модель, а не наш нормализатор
+    text, ssml_tags = _protect_ssml_tags(text)
     # Знаки до чисел: «2+2» → «2 плюс 2», иначе «+» уйдёт в разметку ударений
     text = _normalize_symbols(text)
     # После знаков: наш «+» из «[!]» не должен превратиться в слово «плюс»
@@ -264,7 +307,8 @@ def normalize_for_tts(text: str) -> str:
     with_numbers = normalize_numbers(text)
     # «пройти одна целая» → «пройти одну целую»: винительный после глагола
     with_numbers = _ACCUSATIVE_FEMININE_RE.sub(r'\1 одну целую', with_numbers)
-    return _LATIN_TOKEN_RE.sub(lambda match: _transliterate(match.group(0)), with_numbers)
+    result = _LATIN_TOKEN_RE.sub(lambda match: _transliterate(match.group(0)), with_numbers)
+    return _restore_ssml_tags(result, ssml_tags)
 
 
 def normalize_numbers(text: str, lang: str = 'ru') -> str:
