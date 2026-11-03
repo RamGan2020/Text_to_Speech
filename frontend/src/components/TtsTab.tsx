@@ -1,9 +1,10 @@
 /**
- * TtsTab.tsx — Вкладка «Текст в Речь» (Silero TTS).
+ * TtsTab.tsx — Вкладка «Текст в Речь» (Silero TTS / клонированный голос).
  *
  * Позволяет пользователю:
  *   1. Ввести текст и синтезировать его в MP3-аудио (бэкенд /api/synthesize).
- *   2. Выбрать один из пяти голосов Silero (kseniya, xenia, baya, aidar, eugene).
+ *   2. Выбрать один из пяти голосов Silero (kseniya, xenia, baya, aidar, eugene)
+ *      или клонированный голос из вкладки «Мой голос» (значение clone:<voice_id>).
  *   3. Включить режим подкаста — использовать теги [voice:] и [pause:]
  *      для создания многоголосых сценариев.
  *   4. Выбрать, как читать английские слова — английским голосом,
@@ -13,15 +14,17 @@
  *   - Собственное состояние: текст, голос, настройки, локальный audioUrl.
  *   - Глобальный loading получает из App через пропс (для блокировки во время
  *     синтеза аудио из ответа DeepSeek).
+ *   - Список клонированных голосов приходит пропсом из App.
  */
 import { useState, useRef, useEffect } from 'react'
 import { Card, Form, Button, Alert, Spinner, Row, Col } from 'react-bootstrap'
 import PodcastModePanel from './PodcastModePanel'
 import SsmlHelpModal from './SsmlHelpModal'
 import { useLocalStorage } from '../hooks/useLocalStorage'
-import type { EnglishMode, Speaker, SpeakerOption } from '../types/api'
+import type { EnglishMode, SpeakerOption, VoiceInfo } from '../types/api'
 
 // Доступные голоса Silero TTS — ключи должны совпадать с бэкендом (tts_service.py).
+// Клонированные голоса добавляются динамически из пропса voices (значения clone:<id>).
 const SPEAKERS: SpeakerOption[] = [
   { value: 'kseniya', label: 'Ксения (женский)' },
   { value: 'xenia', label: 'Ксения (вариант, женский)' },
@@ -31,22 +34,23 @@ const SPEAKERS: SpeakerOption[] = [
 ]
 
 interface TtsTabProps {
+  voices: VoiceInfo[];
   globalLoading: boolean;
   onGlobalLoadingChange: (loading: boolean) => void;
   onError: (error: string | null) => void;
 }
 
-export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }: TtsTabProps) {
+export default function TtsTab({ voices, globalLoading, onGlobalLoadingChange, onError }: TtsTabProps) {
   // Текст, введённый пользователем в textarea
   const [text, setText] = useState<string>('')
   // Blob URL синтезированного MP3 — для аудио-плеера и скачивания
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
 
   // Настройки TTS — сохраняются в localStorage для персистентности
-  // Голос по умолчанию: kseniya
-  const [speaker, setSpeaker] = useLocalStorage<Speaker>('tts-speaker', 'kseniya')
+  // Голос по умолчанию: kseniya; для клона значение 'clone:<voice_id>'
+  const [speaker, setSpeaker] = useLocalStorage<string>('tts-speaker', 'kseniya')
   // Выбранный голос для тега [voice:] в режиме подкаста
-  const [templateVoice, setTemplateVoice] = useLocalStorage<Speaker>('tts-template-voice', 'kseniya')
+  const [templateVoice, setTemplateVoice] = useLocalStorage<string>('tts-template-voice', 'kseniya')
   // Значение паузы для тега [pause:]
   const [pauseTemplateValue, setPauseTemplateValue] = useState<string>('1.0')
   // Опции синтеза — расстановка ударений (put_accent)
@@ -65,6 +69,12 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
 
   // Ref для textarea — нужен для вставки тегов в позицию курсора
   const textInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Опции выбора голоса: пресеты Silero + клонированные голоса из вкладки «Мой голос»
+  const speakerOptions: SpeakerOption[] = [
+    ...SPEAKERS,
+    ...voices.map((v) => ({ value: `clone:${v.voice_id}`, label: `★ ${v.name} (клон)` })),
+  ]
 
   // Отзываем Blob URL при размонтировании компонента (предотвращаем утечку памяти)
   useEffect(() => {
@@ -87,17 +97,22 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
     onGlobalLoadingChange?.(true)  // Начинаем загрузку — блокируем интерфейс
     setAudioUrl(null)          // Убираем старый аудио-результат
 
+    // Разбор выбранного голоса: клон ('clone:<id>') или пресет Silero
+    const isClone = speaker.startsWith('clone:')
+    const voice_id = isClone ? speaker.slice('clone:'.length) : null
+
     try {
       const response = await fetch('/api/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          speaker,
+          speaker: isClone ? 'kseniya' : speaker,  // Для клона speaker игнорируется
           put_accent: putAccent,
           put_yo: putYo,
           podcast_mode: podcastMode,
           english_mode: englishMode,
+          voice_id,
         }),
       })
 
@@ -220,11 +235,16 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
             <Col xs={12} md={6}>
               <Form.Group className="mb-3">
                 <Form.Label>Голос</Form.Label>
-                <Form.Select value={speaker} onChange={(e) => setSpeaker(e.target.value as Speaker)}>
-                  {SPEAKERS.map((s) => (
+                <Form.Select value={speaker} onChange={(e) => setSpeaker(e.target.value)}>
+                  {speakerOptions.map((s) => (
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </Form.Select>
+                {speaker.startsWith('clone:') && (
+                  <Form.Text className="text-muted">
+                    Клонированный голос (XTTS v2). Синтез медленнее, чем у Silero.
+                  </Form.Text>
+                )}
               </Form.Group>
               <Form.Group>
                 <Form.Label>Английские слова</Form.Label>
@@ -277,11 +297,14 @@ export default function TtsTab({ globalLoading, onGlobalLoadingChange, onError }
               <Alert variant="info" className="mb-3">
                 В режиме подкаста можно использовать теги, например:{' '}
                 <code>[voice:aidar]</code> Текст... <code>[pause:1.5]</code>
+                {voices.length > 0 && (
+                  <> Клонированные голоса: <code>[voice:clone:{'<id>'}]</code></>
+                )}
               </Alert>
               <PodcastModePanel
-                speakers={SPEAKERS}
+                speakers={speakerOptions}
                 templateVoice={templateVoice}
-                onTemplateVoiceChange={(e) => setTemplateVoice(e.target.value as Speaker)}
+                onTemplateVoiceChange={(e) => setTemplateVoice(e.target.value)}
                 pauseTemplateValue={pauseTemplateValue}
                 onPauseTemplateValueChange={(e) => setPauseTemplateValue(e.target.value)}
                 onInsertVoiceTag={handleInsertVoiceTag}

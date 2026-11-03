@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool  # Запуск блокиру
 from tts_service import get_tts_service  # Функция получения экземпляра TTS-сервиса (singleton)
 from stt_service import get_stt_service  # Функция получения экземпляра STT-сервиса (singleton)
 from deepseek_service import get_deepseek_service  # Функция получения экземпляра DeepSeek-сервиса
+from voice_clone_service import get_voice_clone_service  # Сервис клонирования голоса (XTTS v2)
 import io  # Модуль для работы с потоками в памяти (BytesIO)
 from typing import Literal, Optional  # Тип Optional для аннотаций, Literal — для перечислений
 
@@ -37,6 +38,7 @@ class SynthesizeRequest(BaseModel):
     put_yo: bool = True        # Заменять ли 'е' на 'ё' где нужно по умолчанию
     podcast_mode: bool = False # Режим подкаста (парсинг тегов [voice] и [pause])
     english_mode: Literal['voice', 'transliterate'] = 'voice'  # Английские слова: английский голос или транслитерация
+    voice_id: Optional[str] = None  # Клонированный голос (из вкладки «Мой голос») — если задан, speaker игнорируется
 
 
 # Класс-модель для валидации тела POST-запроса к DeepSeek
@@ -65,17 +67,40 @@ async def synthesize(request: SynthesizeRequest):
     try:
         # Получаем экземпляр TTS-сервиса (singleton — модель Silero загружается один раз)
         tts_service = get_tts_service()
-        # Вызываем метод синтеза в пуле потоков — блокирующий инференс
-        # не останавливает event loop (остальные запросы продолжают отвечать)
-        mp3_file = await run_in_threadpool(
-            tts_service.synthesize,
-            text=request.text,          # Текст для озвучивания
-            speaker=request.speaker,    # Выбранный голос
-            put_accent=request.put_accent,  # Флаг расстановки ударений
-            put_yo=request.put_yo,       # Флаг расстановки буквы 'ё'
-            podcast_mode=request.podcast_mode,  # Режим подкаста (теги)
-            english_mode=request.english_mode   # Способ произношения английских слов
-        )
+        if request.podcast_mode:
+            # Подкаст: теги [voice:]/[pause:] управляют голосами.
+            # Клонированный голос (если выбран) становится голосом по умолчанию
+            # для реплик без тега, а тег [voice:clone:<id>] подключает другие клоны.
+            default_speaker = f'clone:{request.voice_id}' if request.voice_id else request.speaker
+            mp3_file = await run_in_threadpool(
+                tts_service.synthesize,
+                text=request.text,          # Текст для озвучивания
+                speaker=default_speaker,    # Голос по умолчанию для реплик без тега
+                put_accent=request.put_accent,  # Флаг расстановки ударений
+                put_yo=request.put_yo,       # Флаг расстановки буквы 'ё'
+                podcast_mode=True,  # Режим подкаста (теги)
+                english_mode=request.english_mode   # Способ произношения английских слов
+            )
+        elif request.voice_id:
+            # Клонированный голос без подкаста — весь текст читает XTTS v2
+            clone_service = get_voice_clone_service()
+            mp3_file = await run_in_threadpool(
+                clone_service.synthesize,
+                text=request.text,
+                voice_id=request.voice_id,
+            )
+        else:
+            # Обычный синтез Silero — вызываем метод синтеза в пуле потоков,
+            # блокирующий инференс не останавливает event loop
+            mp3_file = await run_in_threadpool(
+                tts_service.synthesize,
+                text=request.text,          # Текст для озвучивания
+                speaker=request.speaker,    # Выбранный голос
+                put_accent=request.put_accent,  # Флаг расстановки ударений
+                put_yo=request.put_yo,       # Флаг расстановки буквы 'ё'
+                podcast_mode=False,
+                english_mode=request.english_mode   # Способ произношения английских слов
+            )
 
         # Возвращаем MP3-файл как streaming response — браузер скачивает файл
         return StreamingResponse(
@@ -169,6 +194,61 @@ async def ask_deepseek(request: DeepSeekRequest):
     except Exception as e:
         # Если произошла любая ошибка — возвращаем 500 с описанием
         raise HTTPException(status_code=500, detail=f"Ошибка запроса к DeepSeek: {str(e)}")
+
+
+# POST-эндпоинт для регистрации образца голоса (клонирование)
+@app.post("/voices/register")
+async def register_voice(audio: UploadFile = File(...), name: Optional[str] = None):
+    """Загрузить образец голоса для клонирования (XTTS v2).
+
+    Принимает аудио-файл 6–30 секунд чистой речи (MP3, WAV, OGG, FLAC, WEBM),
+    возвращает voice_id для использования в /synthesize и тегах [voice:clone:id].
+    """
+    # Проверяем, что файл передан
+    if not audio or not audio.filename:
+        raise HTTPException(status_code=400, detail="Необходимо загрузить аудио-файл")
+
+    # Проверяем расширение файла
+    filename_lower = audio.filename.lower()
+    if not filename_lower.endswith(('.mp3', '.wav', '.ogg', '.flac', '.webm')):
+        raise HTTPException(
+            status_code=400,
+            detail="Поддерживаются только форматы: MP3, WAV, OGG, FLAC, WEBM"
+        )
+
+    try:
+        audio_bytes = await audio.read()
+        file_format = filename_lower.split('.')[-1]
+        # Обработка (декодирование, валидация длительности) — в пуле потоков
+        result = await run_in_threadpool(
+            get_voice_clone_service().register_voice,
+            audio_bytes,
+            file_format,
+            name,
+        )
+        return result
+    except ValueError as e:
+        # Ошибка валидации (размер, длительность, формат)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка регистрации голоса: {str(e)}")
+
+
+# GET-эндпоинт для списка зарегистрированных голосов
+@app.get("/voices")
+async def list_voices():
+    """Список зарегистрированных клонированных голосов."""
+    return {"voices": get_voice_clone_service().list_voices()}
+
+
+# DELETE-эндпоинт для удаления голоса
+@app.delete("/voices/{voice_id}")
+async def delete_voice(voice_id: str):
+    """Удалить образец клонированного голоса по voice_id."""
+    deleted = get_voice_clone_service().delete_voice(voice_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Голос не найден")
+    return {"status": "deleted", "voice_id": voice_id}
 
 
 # Точка входа для запуска сервера через python main.py

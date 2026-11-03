@@ -20,6 +20,8 @@ from text_normalization import (
     split_by_language,
     wrap_ssml,
 )
+from voice_clone_service import SAMPLE_RATE as CLONE_SAMPLE_RATE  # XTTS выдаёт 24 кГц
+from voice_clone_service import get_voice_clone_service  # Сервис клонирования голоса
 
 # Версия русской модели Silero. v5_6_ru — последняя: различает интонацию
 # вопросов, восклицаний и эмфазы. Набор голосов тот же, что в v4_ru.
@@ -136,11 +138,17 @@ class SileroTTSService:
             return max(0, int(float(value) * 1000))
         return max(0, int(value))
 
-    def _parse_podcast_script(self, text: str) -> List[Dict[str, Any]]:
-        """Парсинг сценария подкаста с тегами [voice:name] и [pause:duration]."""
+    def _parse_podcast_script(self, text: str, default_voice: str = "kseniya") -> List[Dict[str, Any]]:
+        """Парсинг сценария подкаста с тегами [voice:name] и [pause:duration].
+
+        Args:
+            text: Сценарий с тегами
+            default_voice: Голос реплик без тега [voice:] — обычно выбранный
+                в интерфейсе голос (пресет Silero или 'clone:<voice_id>')
+        """
         segments: List[Dict[str, Any]] = []
         tag_pattern = re.compile(r'\[(voice|pause|break)\s*:\s*([^\]]+)\]', re.IGNORECASE)
-        current_voice = "kseniya"
+        current_voice = default_voice
         cursor = 0
 
         for match in tag_pattern.finditer(text):
@@ -210,6 +218,20 @@ class SileroTTSService:
 
         return chunks  # Возвращаем список чанков
 
+    def _synthesize_clone(self, text: str, voice_id: str) -> torch.Tensor:
+        """Синтез сегмента клонированным голосом (XTTS v2).
+
+        XTTS выдаёт волну 24 кГц — ресемплим до 48 кГц (частота Silero),
+        чтобы сегмент склеивался с остальным аудио подкаста.
+        """
+        import torchaudio.functional as F  # Функциональный API ресемплинга
+
+        # Синтез волны через сервис клонирования (текст нормализуется там же)
+        wave = get_voice_clone_service().synthesize_wave(text, voice_id)
+        tensor = torch.from_numpy(wave)  # float32, mono, 24 кГц
+        # Приводим к частоте Silero: orig_freq → new_freq
+        return F.resample(tensor, orig_freq=CLONE_SAMPLE_RATE, new_freq=self.sample_rate)
+
     def synthesize(self, text: str, speaker: str = 'kseniya', put_accent: bool = True, put_yo: bool = True, podcast_mode: bool = False, english_mode: str = 'voice') -> BytesIO:
         """Синтез речи из текста — возвращает MP3-файл в виде BytesIO
 
@@ -229,9 +251,9 @@ class SileroTTSService:
 
     def _synthesize(self, text: str, speaker: str, put_accent: bool, put_yo: bool, podcast_mode: bool, english_mode: str) -> BytesIO:
         """Реализация синтеза — вызывается из synthesize() под блокировкой."""
-        # Если режим подкаста — парсим сценарий
+        # Если режим подкаста — парсим сценарий (голос по умолчанию — выбранный)
         if podcast_mode:
-            segments = self._parse_podcast_script(text)
+            segments = self._parse_podcast_script(text, default_voice=speaker)
         else:
             # В обычном режиме — один сегмент с указанным голосом
             segments = [{
@@ -252,6 +274,15 @@ class SileroTTSService:
             else:
                 # Если речь — синтезируем
                 voice = segment.get("voice", speaker)
+
+                # Клонированный голос: тег [voice:clone:<voice_id>] — сегмент
+                # читает XTTS v2 голосом из вкладки «Мой голос»
+                if voice.startswith('clone:'):
+                    voice_id = voice[len('clone:'):]
+                    print(f"Генерация речи (клонированный голос): {segment['text'][:50]}...")
+                    all_audio.append(self._synthesize_clone(segment['text'], voice_id))
+                    continue
+
                 # Проверяем, есть ли такой голос в модели
                 if voice not in ['kseniya', 'xenia', 'baya', 'aidar', 'eugene']:
                     print(f"Неизвестный голос '{voice}', используем {speaker}")

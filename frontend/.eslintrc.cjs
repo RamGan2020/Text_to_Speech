@@ -19,6 +19,9 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
+    // Переменные с префиксом _ намеренно не используются (например _ttsError —
+    // стейт-ошибки хранятся для совместимости, дублируя toast)
+    '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_' }],
   },
   settings: {
     react: {

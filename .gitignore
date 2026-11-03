@@ -47,11 +47,15 @@ desktop.ini
 temp_output.mp3
 temp_output.wav
 
+# Образцы клонированных голосов (XTTS) — не коммитим в репозиторий
+backend/voices/
+
 # === Environment ===
 .env
 .env.local
 .env.production
 
 # === Тестовые файлы ===
-test_*.py
-test_result.txt
+# Временные тест-скрипты в корне репозитория (тесты проекта в backend/tests/ — трекаются)
+/test_*.py
+/test_result.txt

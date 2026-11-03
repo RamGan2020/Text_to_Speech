@@ -6,9 +6,10 @@
 ## Требования
 
 - Linux (Ubuntu 20.04+ / Debian 11+)
-- Python 3.8+
+- Python 3.9–3.11 (пакет TTS/XTTS v2 не поддерживает 3.8 и 3.12+)
 - Node.js 18+ и npm
 - Минимум 4 ГБ ОЗУ (Silero TTS ~2 ГБ + Whisper small ~500 МБ)
+- Клонирование голоса: +4 ГБ ОЗУ при синтезе (XTTS v2) — всего 8 ГБ, если планируете использовать «Мой голос»
 - Доступ к интернету (для загрузки моделей при первом запуске и работы DeepSeek API)
 - HTTPS (обязательно для записи с микрофона в продакшене)
 
@@ -75,11 +76,12 @@ python3 -m venv venv
 # Активация
 source venv/bin/activate
 
-# Обновление pip
+# Обновление pip и установка build-зависимостей (сборка TTS/whisper из исходников)
 pip install --upgrade pip
+pip install "Cython==3.3.1" "wheel==0.45.1" "numpy==1.24.4"
 
-# Установка зависимостей
-pip install -r requirements.txt
+# Установка зависимостей (requirements.txt — полный lock рабочего окружения)
+pip install --no-build-isolation -r requirements.txt
 ```
 
 > **Важно:** При первом запуске модели будут загружены автоматически:

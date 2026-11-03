@@ -4,7 +4,7 @@
 
 [![TypeScript Supported](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green)](https://nodejs.org/)
-[![Python](https://img.shields.io/badge/Python-3.8+-blue)](https://python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9--3.11-blue)](https://python.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 ---
@@ -14,7 +14,7 @@
 ### Требования
 
 **Backend:**
-- Python 3.8+
+- Python 3.9–3.11 (пакет TTS/XTTS v2 не поддерживает 3.8 и 3.12+)
 - pip
 - FastAPI, uvicorn, torch, torchaudio
 
@@ -27,11 +27,16 @@
 #### Backend
 ```bash
 cd backend
-python -m venv venv
+# Нужен Python 3.9–3.11 (XTTS v2 не встаёт на 3.8/3.12+).
+# В Windows используйте py -3.11, если python указывает на другую версию:
+py -3.11 -m venv venv  # или: python3.11 -m venv venv
 venv\Scripts\activate  # Windows
 # source venv/bin/activate  # Linux/Mac
 
-pip install -r requirements.txt
+pip install --upgrade pip
+# build-зависимости для сборки TTS/whisper из исходников (порядок важен):
+pip install "Cython==3.3.1" "wheel==0.45.1" "numpy==1.24.4"
+pip install --no-build-isolation -r requirements.txt
 python main.py
 ```
 
@@ -72,6 +77,13 @@ npm run dev
 - ✅ Автоматическая конвертация webm → WAV
 - ✅ Распознавание записи в текст
 
+### 🎭 Клонирование голоса
+- ✅ Загрузка образца 6–30 сек или запись с микрофона
+- ✅ XTTS v2 (Coqui TTS) — клонирование без дообучения
+- ✅ Синтез текста клонированным голосом
+- ✅ Подкасты со своим голосом — тег `[voice:clone:<id>]`
+- ✅ Та же нормализация текста, что и у Silero (числа, ударения, термины)
+
 ### 🤖 DeepSeek AI
 - ✅ Задайте вопрос модели `deepseek-chat` или `deepseek-reasoner`
 - ✅ Выбор системного промпта (роль ассистента)
@@ -82,6 +94,7 @@ npm run dev
 - **Backend:** FastAPI, uvicorn
 - **TTS Model:** Silero TTS v5 (`v5_6_ru`, PyTorch)
 - **EN TTS Model:** Silero TTS v3 (`v3_en`) — английские фразы голосом, подобранным под диктора
+- **Voice Clone:** XTTS v2 (Coqui TTS) — клонирование голоса с образца 6–30 сек
 - **STT Model:** OpenAI Whisper (HuggingFace)
 - **AI Model:** DeepSeek API
 - **PWA:** ServiceWorker + Manifest
@@ -153,6 +166,15 @@ cd backend
 ---
 
 ## 📝 Changelog
+
+### v1.2.0 — Клонирование голоса (XTTS v2)
+- Новая вкладка «Мой голос»: загрузка/запись образца 6–30 сек, список голосов, проверка
+- API: `POST /voices/register`, `GET /voices`, `DELETE /voices/{voice_id}`, поле `voice_id` в `/synthesize`
+- Подкасты со своим голосом: тег `[voice:clone:<id>]` в панели подкаста
+- Клонированные голоса в селекте «Текст в речь» (★ Мой голос)
+- XTTS v2 (Coqui TTS) — ленивая загрузка модели при первом синтезе
+- `TTS==0.22.0` в requirements, `librosa` поднят до 0.10.1
+- Образцы голосов хранятся в `backend/voices/` (в .gitignore)
 
 ### v1.1.1 — Подготовка к хостингу (конкурентность)
 - `run_in_threadpool` для `/synthesize`, `/transcribe`, `/ask_deepseek` — долгий инференс не блокирует event loop, сервер отвечает на остальные запросы

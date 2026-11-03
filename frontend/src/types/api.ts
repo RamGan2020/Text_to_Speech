@@ -14,6 +14,8 @@ export interface SynthesizeRequest {
   put_yo: boolean;
   podcast_mode: boolean;
   english_mode: EnglishMode;
+  /** Клонированный голос (вкладка «Мой голос») — если задан, speaker игнорируется */
+  voice_id?: string | null;
 }
 
 export interface SynthesizeResponse {
@@ -41,8 +43,17 @@ export interface DeepSeekResponse {
 }
 
 export interface SpeakerOption {
-  value: Speaker;
+  /** 'kseniya' | 'xenia' | ... или 'clone:<voice_id>' для клонированного голоса */
+  value: string;
   label: string;
+}
+
+/** Зарегистрированный клонированный голос (XTTS v2). */
+export interface VoiceInfo {
+  voice_id: string;
+  name: string;
+  duration_sec?: number;
+  created_at?: string;
 }
 
 export interface PodcastTag {

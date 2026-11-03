@@ -25,14 +25,51 @@ npm run type-check
 ### Backend не запускается
 
 **Ошибка:** "Python Interpreter not found"
-- Установите Python 3.8+
-- В Windows: https://python.org/downloads/
+- Установите Python 3.9–3.11 (XTTS v2/TTS не встаёт на 3.8 и 3.12+)
+- В Windows: https://python.org/downloads/ (выбирайте 3.11)
+
+**Ошибка:** `No matching distribution found for TTS==0.22.0`
+- Вы используете Python 3.8 или 3.12+. Создайте venv на Python 3.11:
+```bash
+py -3.11 -m venv venv   # Windows
+python3.11 -m venv venv # Linux/Mac
+```
 
 **Ошибка:** "venv not created"
 ```bash
 cd backend
 python -m venv venv
 ```
+
+**Ошибка:** `[Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000)` (Windows)
+- Порт 8000 занят старым процессом бэкенда. Найдите и завершите его:
+```bash
+netstat -ano | findstr :8000   # смотрим PID в последней колонке
+taskkill /PID <PID> /F
+```
+- Либо запустите на другом порту: `uvicorn main:app --port 8001`
+
+### Ошибки установки TTS / XTTS v2
+
+**Ошибка:** `ModuleNotFoundError: No module named 'pkg_resources'` при сборке openai-whisper
+- Ставьте с флагом `--no-build-isolation` (используется setuptools из venv, а не изолированный):
+```bash
+pip install wheel "numpy==1.24.4" Cython
+pip install --no-build-isolation -r requirements.txt
+```
+
+**Ошибка:** `ModuleNotFoundError: No module named 'numpy'` (или 'Cython') при сборке TTS
+- `setup.py` пакета TTS импортирует numpy/Cython на этапе сборки.
+  Сначала установите их в venv (см. команду выше), потом повторите установку.
+
+**Ошибка:** `No module named 'TTS'` при нажатии «Проверить» (клонирование голоса)
+- Пакет `TTS` (Coqui) не установлен в том окружении, где запущен backend.
+- Backend должен быть запущен **из venv**: `venv\Scripts\python main.py` (а не глобальным python).
+- После `pip install` бэкенд нужно перезапустить, чтобы Python подхватил новый модуль.
+
+**Долго грузится первый синтез клонированным голосом**
+- Нормально: при первом вызове XTTS v2 скачивает модель ~1.8 ГБ в `%USERPROFILE%\.cache\tts`.
+- На CPU синтез фразы занимает десятки секунд.
 
 ### CORS Errors
 
@@ -108,7 +145,9 @@ npm run lint:fix
 cd frontend
 npm install
 cd ../backend
-pip install -r requirements.txt
+# build-зависимости для сборки TTS/whisper, затем весь lock:
+pip install "Cython==3.3.1" "wheel==0.45.1" "numpy==1.24.4"
+pip install --no-build-isolation -r requirements.txt
 python main.py
 cd ../frontend
 npm run dev

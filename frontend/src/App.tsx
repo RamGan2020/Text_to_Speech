@@ -1,21 +1,22 @@
 /**
- * App.tsx — Корневой контейнер приложения TTS/STT/DeepSeek.
+ * App.tsx — Корневой контейнер приложения TTS/STT/DeepSeek/Голос.
  *
  * После рефакторинга это тонкий «оркестратор»:
  *   - Хранит глобальное состояние (загрузка, ошибки, результаты)
  *   - Рендерит вкладки React-Bootstrap
  *   - Делегирует бизнес-логику дочерним компонентам:
- *       TtsTab, SttTab, DeepseekTab
+ *       TtsTab, SttTab, DeepseekTab, VoiceCloneTab
  *   - Показывает карточки результатов (TtsResultCard, SttResultCard)
- *   - Передаёт коллбэки в дочерние компоненты для связи между ними
+ *   - Загружает список клонированных голосов и передаёт его в TtsTab/VoiceCloneTab
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Container, Tabs, Tab } from 'react-bootstrap'
 import './App.css'
 // Импорт рефакторенных компонентов — каждая вкладка в своём файле
 import TtsTab from './components/TtsTab'
 import SttTab from './components/SttTab'
 import DeepseekTab from './components/DeepseekTab'
+import VoiceCloneTab from './components/VoiceCloneTab'
 import TtsResultCard from './components/TtsResultCard'
 import SttResultCard from './components/SttResultCard'
 // Toast-уведомления — заменяют Alert-блоки (но Alert оставлен для совместимости)
@@ -23,12 +24,13 @@ import ToastNotifier from './components/ToastNotifier'
 
 import { useToastError } from './hooks/useToastError'
 import { OfflineBanner } from './hooks/useOnlineStatus'
+import type { VoiceInfo } from './types/api'
 
-type ActiveTab = 'tts' | 'stt' | 'deepseek';
+type ActiveTab = 'tts' | 'stt' | 'deepseek' | 'voices';
 
 /** App — главный компонент, рендерится в main.tsx */
 export default function App() {
-  // Ключ выбранной вкладки: 'tts' | 'stt' | 'deepseek'
+  // Ключ выбранной вкладки: 'tts' | 'stt' | 'deepseek' | 'voices'
   const [activeTab, setActiveTab] = useState<ActiveTab>('tts')
   // Глобальный флаг загрузки — блокирует элементы интерфейса во всех вкладках
   const [loading, setLoading] = useState<boolean>(false)
@@ -37,22 +39,40 @@ export default function App() {
   const [_ttsError, setTtsError] = useState<string | null>(null)
   const [_sttError, setSttError] = useState<string | null>(null)
   const [_deepseekError, setDeepseekError] = useState<string | null>(null)
+  const [_voicesError, setVoicesError] = useState<string | null>(null)
   // Распознанный текст из STT — передаётся в SttTab и отображается через SttResultCard
   const [recognizedText, setRecognizedText] = useState<string>('')
   // URL синтезированного аудио из функции «Озвучить ответ» во вкладке DeepSeek
   const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null)
+  // Зарегистрированные клонированные голоса (XTTS v2) — общие для TtsTab и VoiceCloneTab
+  const [voices, setVoices] = useState<VoiceInfo[]>([])
 
   // Обёртки над onError, которые выводят toast.error() + обновляют стейт
   const ttsOnError = useToastError(setTtsError)
   const sttOnError = useToastError(setSttError)
   const deepseekOnError = useToastError(setDeepseekError)
+  const voicesOnError = useToastError(setVoicesError)
 
-  // При монтировании определяем десктоп/мобилку для CSS-классов на body
+  // Загрузка списка клонированных голосов с бэкенда.
+  // Ошибки молча игнорируем — при оффлайне просто покажем пустой список.
+  const loadVoices = useCallback(async () => {
+    try {
+      const response = await fetch('/api/voices')
+      if (!response.ok) return
+      const data = await response.json()
+      setVoices(Array.isArray(data.voices) ? data.voices : [])
+    } catch {
+      // Оффлайн или бэкенд недоступен — список не обновляем
+    }
+  }, [])
+
+  // При монтировании загружаем голоса и определяем десктоп/мобилку для CSS-классов
   useEffect(() => {
+    loadVoices()
     document.body.classList.remove('desktop-ui', 'mobile-ui')
     const mode = window.innerWidth < 768 ? 'mobile' : 'desktop'
     document.body.classList.add(`${mode}-ui`)
-  }, [])
+  }, [loadVoices])
 
   // Вызывается из DeepseekTab при нажатии «Озвучить ответ» —
   // синтезирует речь из ответа и переключает пользователя на TTS-вкладку
@@ -67,19 +87,21 @@ export default function App() {
       {/* Заголовок страницы */}
       <div className="text-center mb-4">
         <h1>Text-to-Speech / Speech-to-Text</h1>
-        <p className="text-muted">Синтез речи из текста или распознавание речи из аудио</p>
+        <p className="text-muted">Синтез речи из текста, клонирование голоса или распознавание речи из аудио</p>
       </div>
 
       {/* Вкладки: переключают вкладки и сбрасывают ошибки при переключении */}
       <Tabs
         activeKey={activeTab}
         onSelect={(k) => {
-          const newTab = k === 'stt' || k === 'deepseek' ? k : 'tts';
+          const newTab: ActiveTab =
+            k === 'stt' || k === 'deepseek' || k === 'voices' ? k : 'tts';
           setActiveTab(newTab);
           // При смене вкладки убираем ошибки — они относятся к предыдущей
           setTtsError(null)
           setSttError(null)
           setDeepseekError(null)
+          setVoicesError(null)
         }}
         className="mb-3"
         variant="pills"
@@ -87,6 +109,7 @@ export default function App() {
         {/* ТТК Вкладка: Текст в Речь (Silero TTS) */}
         <Tab eventKey="tts" title="Текст в речь">
           <TtsTab
+            voices={voices}
             globalLoading={loading}
             onGlobalLoadingChange={setLoading}
             onError={ttsOnError}
@@ -118,10 +141,21 @@ export default function App() {
             onSwitchToTts={handleSwitchToTtsWithAudio}
           />
         </Tab>
+
+        {/* Вкладка: Мой голос — клонирование голоса (XTTS v2) */}
+        <Tab eventKey="voices" title="Мой голос">
+          <VoiceCloneTab
+            voices={voices}
+            onVoicesChanged={loadVoices}
+            globalLoading={loading}
+            onGlobalLoadingChange={setLoading}
+            onError={voicesOnError}
+          />
+        </Tab>
       </Tabs>
 
       {/* Toast-уведомления — заменяют inline Alert-блоки */}
       <ToastNotifier />
     </Container>
-)
+  )
 }
